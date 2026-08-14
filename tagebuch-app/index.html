@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tagebuch">
+<meta name="theme-color" content="#14161a">
+<title>Tagebuch</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#14161a;
+    --surface:#1b1e23;
+    --surface-2:#23272d;
+    --border:#2e333b;
+    --text:#e8e6e1;
+    --text-dim:#8b9099;
+    --accent:#7c9885;
+    --accent-dim:rgba(124,152,133,.14);
+    --danger:#c2685a;
+    --danger-dim:rgba(194,104,90,.14);
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Space Grotesk', system-ui, sans-serif;
+    overscroll-behavior-y:contain;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .mono{font-family:'JetBrains Mono', ui-monospace, monospace;}
+  #app{max-width:560px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
+
+  header{
+    position:sticky; top:0; z-index:10;
+    background:linear-gradient(var(--bg) 80%, transparent);
+    padding:18px 16px 10px;
+  }
+  .top-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
+  h1{font-size:20px; font-weight:700; margin:0; letter-spacing:.2px;}
+  .icon-btn{
+    background:var(--surface); border:1px solid var(--border); color:var(--text-dim);
+    width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
+    cursor:pointer; flex-shrink:0;
+  }
+  .icon-btn:active{background:var(--surface-2);}
+
+  .search{
+    margin-top:12px; display:flex; align-items:center; gap:8px;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:9px 12px;
+  }
+  .search input{
+    background:transparent; border:none; outline:none; color:var(--text); font-family:inherit;
+    font-size:14px; width:100%;
+  }
+  .search input::placeholder{color:var(--text-dim);}
+
+  .chips{display:flex; gap:8px; overflow-x:auto; margin-top:10px; padding-bottom:2px; scrollbar-width:none;}
+  .chips::-webkit-scrollbar{display:none;}
+  .chip{
+    flex-shrink:0; padding:6px 12px; border-radius:999px; font-size:13px;
+    background:var(--surface); border:1px solid var(--border); color:var(--text-dim); cursor:pointer;
+    display:flex; align-items:center; gap:6px; white-space:nowrap;
+  }
+  .chip .n{font-family:'JetBrains Mono',monospace; font-size:11px; opacity:.7;}
+  .chip.active{background:var(--accent-dim); border-color:var(--accent); color:var(--accent);}
+
+  main{flex:1; padding:6px 16px 100px;}
+  .day-group{margin-top:20px;}
+  .day-label{
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
+    text-transform:uppercase; letter-spacing:.08em; margin:0 0 8px 4px;
+  }
+  .entry{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:12px 14px; margin-bottom:8px; cursor:pointer; display:flex; gap:12px; align-items:flex-start;
+  }
+  .entry:active{background:var(--surface-2);}
+  .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:6px; flex-shrink:0;}
+  .entry-body{flex:1; min-width:0;}
+  .entry-top{display:flex; justify-content:space-between; gap:8px; align-items:baseline;}
+  .entry-name{font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .entry-time{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--text-dim); flex-shrink:0;}
+  .entry-meta{display:flex; gap:8px; margin-top:4px; align-items:center; flex-wrap:wrap;}
+  .entry-amount{font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--accent);}
+  .entry-cat{font-size:12px; color:var(--text-dim);}
+  .entry-note{font-size:13px; color:var(--text-dim); margin-top:5px; line-height:1.4;}
+
+  .empty{text-align:center; color:var(--text-dim); padding:60px 20px; font-size:14px; line-height:1.6;}
+
+  .fab{
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    background:var(--accent); color:#0f1210; border:none; border-radius:999px;
+    padding:14px 26px; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px;
+    display:flex; align-items:center; gap:8px; box-shadow:0 8px 24px rgba(0,0,0,.4); cursor:pointer;
+    z-index:15;
+  }
+  .fab:active{transform:translateX(-50%) scale(.97);}
+
+  .sheet-overlay{
+    position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:20;
+    opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .sheet-overlay.open{opacity:1; pointer-events:auto;}
+  .sheet{
+    position:fixed; left:0; right:0; bottom:0; z-index:21; max-width:560px; margin:0 auto;
+    background:var(--surface); border-radius:20px 20px 0 0; border:1px solid var(--border); border-bottom:none;
+    padding:8px 20px calc(24px + env(safe-area-inset-bottom));
+    transform:translateY(100%); transition:transform .25s cubic-bezier(.32,.72,0,1);
+    max-height:88vh; overflow-y:auto;
+  }
+  .sheet.open{transform:translateY(0);}
+  .sheet-handle{width:36px; height:4px; background:var(--border); border-radius:2px; margin:8px auto 16px;}
+  .sheet h2{font-size:17px; margin:0 0 16px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em;}
+  .field input, .field textarea, .field select{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    border-radius:10px; padding:11px 12px; font-family:inherit; font-size:15px; outline:none;
+  }
+  .field input:focus, .field textarea:focus{border-color:var(--accent);}
+  .field textarea{resize:vertical; min-height:60px; font-family:inherit;}
+  .row2{display:flex; gap:10px;}
+  .row2 .field{flex:1;}
+  .sheet-actions{display:flex; gap:10px; margin-top:6px;}
+  .btn{
+    flex:1; padding:13px; border-radius:10px; border:none; font-family:inherit; font-weight:600;
+    font-size:14px; cursor:pointer;
+  }
+  .btn-primary{background:var(--accent); color:#0f1210;}
+  .btn-danger{background:var(--danger-dim); color:var(--danger);}
+  .btn-ghost{background:transparent; border:1px solid var(--border); color:var(--text-dim);}
+
+  .menu-sheet .field:last-child{margin-bottom:0;}
+  .menu-btn{
+    display:flex; align-items:center; gap:10px; width:100%; text-align:left;
+    background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    padding:13px 14px; border-radius:10px; font-family:inherit; font-size:14px; cursor:pointer; margin-bottom:8px;
+  }
+  .menu-btn:active{background:var(--border);}
+  .hint{font-size:12px; color:var(--text-dim); line-height:1.5; margin-top:14px;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="top-row">
+      <h1>Tagebuch</h1>
+      <button class="icon-btn" id="menuBtn" title="Export / Import">⋯</button>
+    </div>
+    <div class="search">
+      <span class="mono" style="color:var(--text-dim); font-size:14px;">⌕</span>
+      <input id="searchInput" placeholder="Suchen…">
+    </div>
+    <div class="chips" id="chips"></div>
+  </header>
+
+  <main id="list"></main>
+
+  <button class="fab" id="addBtn">+ Eintrag</button>
+</div>
+
+<div class="sheet-overlay" id="overlay"></div>
+
+<div class="sheet" id="formSheet">
+  <div class="sheet-handle"></div>
+  <h2 id="formTitle">Neuer Eintrag</h2>
+  <div class="field">
+    <label>Wann</label>
+    <input type="datetime-local" id="f_time">
+  </div>
+  <div class="field">
+    <label>Was</label>
+    <input type="text" id="f_name" placeholder="Bezeichnung" list="nameSuggestions">
+    <datalist id="nameSuggestions"></datalist>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label>Menge</label>
+      <input type="number" step="any" id="f_amount" placeholder="0">
+    </div>
+    <div class="field">
+      <label>Einheit</label>
+      <input type="text" id="f_unit" placeholder="mg, g, Stück…" list="unitSuggestions">
+      <datalist id="unitSuggestions">
+        <option value="mg"><option value="g"><option value="ml">
+        <option value="Stück"><option value="Tabletten"><option value="€">
+      </datalist>
+    </div>
+  </div>
+  <div class="field">
+    <label>Kategorie</label>
+    <input type="text" id="f_category" placeholder="Konsum, Markt, Sonstiges…" list="catSuggestions">
+    <datalist id="catSuggestions">
+      <option value="Konsum"><option value="Markt"><option value="Sonstiges">
+    </datalist>
+  </div>
+  <div class="field">
+    <label>Notiz (optional)</label>
+    <textarea id="f_note" placeholder="Wirkung, Kontext, was auch immer…"></textarea>
+  </div>
+  <div class="sheet-actions">
+    <button class="btn btn-ghost" id="cancelBtn">Abbrechen</button>
+    <button class="btn btn-danger" id="deleteBtn" style="display:none;">Löschen</button>
+    <button class="btn btn-primary" id="saveBtn">Speichern</button>
+  </div>
+</div>
+
+<div class="sheet menu-sheet" id="menuSheet">
+  <div class="sheet-handle"></div>
+  <h2>Daten</h2>
+  <button class="menu-btn" id="exportJsonBtn">⇩ Als JSON exportieren (Backup)</button>
+  <button class="menu-btn" id="exportCsvBtn">⇩ Als CSV exportieren</button>
+  <label class="menu-btn" style="display:flex; margin-bottom:0;">
+    ⇧ JSON importieren
+    <input type="file" id="importInput" accept="application/json" style="display:none;">
+  </label>
+  <div class="hint">
+    Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
+    Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
+  </div>
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'tagebuch_entries_v1';
+  let entries = [];
+  let activeFilter = 'Alle';
+  let editingId = null;
+
+  try{
+    entries = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  }catch(e){ entries = []; }
+
+  function persist(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+  }
+  function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+  function pad(n){ return n.toString().padStart(2,'0'); }
+  function toLocalInputValue(d){
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+  function fmtDay(d){
+    const today = new Date(); const yest = new Date(); yest.setDate(today.getDate()-1);
+    const sameDay = (a,b)=> a.toDateString()===b.toDateString();
+    if(sameDay(d, today)) return 'Heute';
+    if(sameDay(d, yest)) return 'Gestern';
+    return d.toLocaleDateString('de-DE', {weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
+  }
+  function fmtTime(d){
+    return pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+
+  // ---------- rendering ----------
+  function renderChips(){
+    const cats = {};
+    entries.forEach(e=>{ const c = e.category || 'Sonstiges'; cats[c] = (cats[c]||0)+1; });
+    const chipsEl = document.getElementById('chips');
+    const all = [['Alle', entries.length], ...Object.entries(cats).sort((a,b)=>b[1]-a[1])];
+    chipsEl.innerHTML = all.map(([name,count])=>
+      `<div class="chip ${activeFilter===name?'active':''}" data-cat="${name}">${name} <span class="n">${count}</span></div>`
+    ).join('');
+    chipsEl.querySelectorAll('.chip').forEach(el=>{
+      el.addEventListener('click', ()=>{ activeFilter = el.dataset.cat; renderList(); renderChips(); });
+    });
+  }
+
+  function renderList(){
+    const q = document.getElementById('searchInput').value.trim().toLowerCase();
+    let filtered = entries.filter(e=>{
+      if(activeFilter!=='Alle' && (e.category||'Sonstiges')!==activeFilter) return false;
+      if(q && !(e.name.toLowerCase().includes(q) || (e.note||'').toLowerCase().includes(q))) return false;
+      return true;
+    });
+    filtered.sort((a,b)=> new Date(b.time) - new Date(a.time));
+
+    const list = document.getElementById('list');
+    if(filtered.length===0){
+      list.innerHTML = `<div class="empty">Noch nichts hier.<br>Tipp unten auf „+ Eintrag", um loszulegen.</div>`;
+      return;
+    }
+
+    const groups = {};
+    filtered.forEach(e=>{
+      const d = new Date(e.time);
+      const key = d.toDateString();
+      if(!groups[key]) groups[key] = {label: fmtDay(d), items: []};
+      groups[key].items.push(e);
+    });
+
+    list.innerHTML = Object.values(groups).map(g => `
+      <div class="day-group">
+        <div class="day-label">${g.label}</div>
+        ${g.items.map(e => `
+          <div class="entry" data-id="${e.id}">
+            <div class="dot"></div>
+            <div class="entry-body">
+              <div class="entry-top">
+                <div class="entry-name">${escapeHtml(e.name)}</div>
+                <div class="entry-time mono">${fmtTime(new Date(e.time))}</div>
+              </div>
+              <div class="entry-meta">
+                ${e.amount!=='' && e.amount!=null ? `<span class="entry-amount mono">${e.amount}${e.unit?' '+escapeHtml(e.unit):''}</span>`:''}
+                <span class="entry-cat">${escapeHtml(e.category||'Sonstiges')}</span>
+              </div>
+              ${e.note ? `<div class="entry-note">${escapeHtml(e.note)}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+
+    list.querySelectorAll('.entry').forEach(el=>{
+      el.addEventListener('click', ()=> openForm(el.dataset.id));
+    });
+  }
+
+  function refreshNameSuggestions(){
+    const names = [...new Set(entries.map(e=>e.name))];
+    document.getElementById('nameSuggestions').innerHTML = names.map(n=>`<option value="${escapeAttr(n)}">`).join('');
+  }
+
+  function escapeHtml(str){
+    return (str||'').replace(/[&<>"']/g, s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+  }
+  function escapeAttr(str){ return escapeHtml(str); }
+
+  // ---------- form sheet ----------
+  const overlay = document.getElementById('overlay');
+  const formSheet = document.getElementById('formSheet');
+  const menuSheet = document.getElementById('menuSheet');
+
+  function openOverlay(sheetEl){
+    overlay.classList.add('open');
+    sheetEl.classList.add('open');
+  }
+  function closeSheets(){
+    overlay.classList.remove('open');
+    formSheet.classList.remove('open');
+    menuSheet.classList.remove('open');
+  }
+  overlay.addEventListener('click', closeSheets);
+
+  function openForm(id){
+    editingId = id || null;
+    const deleteBtn = document.getElementById('deleteBtn');
+    if(id){
+      const e = entries.find(x=>x.id===id);
+      document.getElementById('formTitle').textContent = 'Eintrag bearbeiten';
+      document.getElementById('f_time').value = toLocalInputValue(new Date(e.time));
+      document.getElementById('f_name').value = e.name;
+      document.getElementById('f_amount').value = e.amount ?? '';
+      document.getElementById('f_unit').value = e.unit || '';
+      document.getElementById('f_category').value = e.category || '';
+      document.getElementById('f_note').value = e.note || '';
+      deleteBtn.style.display = 'block';
+    } else {
+      document.getElementById('formTitle').textContent = 'Neuer Eintrag';
+      document.getElementById('f_time').value = toLocalInputValue(new Date());
+      document.getElementById('f_name').value = '';
+      document.getElementById('f_amount').value = '';
+      document.getElementById('f_unit').value = '';
+      document.getElementById('f_category').value = activeFilter!=='Alle' ? activeFilter : '';
+      document.getElementById('f_note').value = '';
+      deleteBtn.style.display = 'none';
+    }
+    refreshNameSuggestions();
+    openOverlay(formSheet);
+  }
+
+  document.getElementById('addBtn').addEventListener('click', ()=> openForm(null));
+  document.getElementById('cancelBtn').addEventListener('click', closeSheets);
+
+  document.getElementById('saveBtn').addEventListener('click', ()=>{
+    const name = document.getElementById('f_name').value.trim();
+    if(!name){ document.getElementById('f_name').focus(); return; }
+    const timeVal = document.getElementById('f_time').value;
+    const data = {
+      id: editingId || uid(),
+      time: timeVal ? new Date(timeVal).toISOString() : new Date().toISOString(),
+      name,
+      amount: document.getElementById('f_amount').value !== '' ? Number(document.getElementById('f_amount').value) : null,
+      unit: document.getElementById('f_unit').value.trim(),
+      category: document.getElementById('f_category').value.trim() || 'Sonstiges',
+      note: document.getElementById('f_note').value.trim()
+    };
+    if(editingId){
+      entries = entries.map(e => e.id===editingId ? data : e);
+    } else {
+      entries.push(data);
+    }
+    persist();
+    closeSheets();
+    renderChips();
+    renderList();
+  });
+
+  document.getElementById('deleteBtn').addEventListener('click', ()=>{
+    if(!editingId) return;
+    if(confirm('Eintrag wirklich löschen?')){
+      entries = entries.filter(e=>e.id!==editingId);
+      persist();
+      closeSheets();
+      renderChips();
+      renderList();
+    }
+  });
+
+  document.getElementById('searchInput').addEventListener('input', renderList);
+
+  // ---------- menu: export / import ----------
+  document.getElementById('menuBtn').addEventListener('click', ()=> openOverlay(menuSheet));
+
+  document.getElementById('exportJsonBtn').addEventListener('click', ()=>{
+    downloadFile(JSON.stringify(entries, null, 2), 'tagebuch-export.json', 'application/json');
+  });
+
+  document.getElementById('exportCsvBtn').addEventListener('click', ()=>{
+    const header = ['Datum','Uhrzeit','Was','Menge','Einheit','Kategorie','Notiz'];
+    const rows = [...entries].sort((a,b)=>new Date(a.time)-new Date(b.time)).map(e=>{
+      const d = new Date(e.time);
+      return [
+        d.toLocaleDateString('de-DE'), fmtTime(d), e.name,
+        e.amount ?? '', e.unit || '', e.category || '', (e.note||'').replace(/\n/g,' ')
+      ].map(csvEscape).join(',');
+    });
+    downloadFile([header.join(','), ...rows].join('\n'), 'tagebuch-export.csv', 'text/csv');
+  });
+
+  function csvEscape(val){
+    val = String(val);
+    if(/[",\n]/.test(val)) return '"' + val.replace(/"/g,'""') + '"';
+    return val;
+  }
+  function downloadFile(content, filename, mime){
+    const blob = new Blob([content], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('importInput').addEventListener('change', (ev)=>{
+    const file = ev.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const imported = JSON.parse(reader.result);
+        if(!Array.isArray(imported)) throw new Error('invalid');
+        const existingIds = new Set(entries.map(e=>e.id));
+        let added = 0;
+        imported.forEach(e=>{
+          if(e && e.id && !existingIds.has(e.id)){ entries.push(e); added++; }
+        });
+        persist();
+        renderChips(); renderList(); closeSheets();
+        alert(added + ' Einträge importiert.');
+      }catch(e){
+        alert('Konnte die Datei nicht lesen. Ist es ein gültiger Export aus dieser App?');
+      }
+    };
+    reader.readAsText(file);
+    ev.target.value = '';
+  });
+
+  renderChips();
+  renderList();
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>
