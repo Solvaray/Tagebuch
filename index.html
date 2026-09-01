@@ -468,7 +468,8 @@
       : (day => day.length + (day.length===1 ? ' Eintrag' : ' Einträge'));
     const dayGroups = Object.values(groups);
     const maxDay = m ? Math.max(...dayGroups.map(g => m.total(g.items)), 0) : 0;
-    const avgTxt = (m && m.average != null && m.mode !== 'count') ? ' · Ø ' + m.fmt(m.average) : '';
+    // "Ø" wird leicht als "ungefähr" gelesen - ausgeschrieben ist es eindeutig
+    const avgTxt = (m && m.average != null && m.mode !== 'count') ? ' · Schnitt ' + m.fmt(m.average) + '/Tag' : '';
     const usedNames = new Map();
 
     // Kategorie nur zeigen, wenn sie ueberhaupt unterscheidet
