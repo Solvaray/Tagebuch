@@ -1,4 +1,4 @@
-const CACHE = 'tagebuch-v7';
+const CACHE = 'tagebuch-v8';
 const ASSETS = ['./', './index.html', './stats.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', (e) => {

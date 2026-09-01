@@ -90,6 +90,7 @@
     white-space:nowrap;
   }
   .day-label .avg{color:var(--text-dim);}
+  .day-label .miss{color:#d99a6a; margin-left:5px; font-weight:600;}
   /* Tagesband: Laenge = Tagesmenge im Verhaeltnis zum staerksten Tag der Ansicht,
      Abschnitte = Anteil der einzelnen Wirkstoffe. Vergleich mit sich selbst,
      bewusst keine Grenzwerte und keine Ampelfarben. */
@@ -183,6 +184,7 @@
     padding:13px 14px; border-radius:10px; font-family:inherit; font-size:14px; cursor:pointer; margin-bottom:8px;
   }
   .menu-btn:active{background:var(--border);}
+  .menu-btn.danger{color:var(--danger); border-color:rgba(194,104,90,.35);}
   .hint{font-size:12px; color:var(--text-dim); line-height:1.5; margin-top:14px;}
 </style>
 </head>
@@ -265,10 +267,18 @@
   <h2>Daten</h2>
   <button class="menu-btn" id="exportJsonBtn">⇩ Als JSON exportieren (Backup)</button>
   <button class="menu-btn" id="exportCsvBtn">⇩ Als CSV exportieren</button>
-  <label class="menu-btn" style="display:flex; margin-bottom:0;">
+  <label class="menu-btn" style="display:flex;">
     ⇧ JSON importieren
     <input type="file" id="importInput" accept="application/json" style="display:none;">
   </label>
+  <button class="menu-btn danger" id="resetBtn" style="margin-bottom:0;">⌫ Alle Einträge löschen</button>
+  <div id="resetConfirm" style="display:none;">
+    <div class="hint" id="resetWarn" style="color:var(--danger);"></div>
+    <div class="sheet-actions" style="margin-top:10px;">
+      <button class="btn btn-ghost" id="resetCancel">Abbrechen</button>
+      <button class="btn btn-danger" id="resetGo">Endgültig löschen</button>
+    </div>
+  </div>
   <div class="field" style="margin-top:18px;">
     <label>Tagesbeginn</label>
     <select id="dayStartSel">
@@ -286,7 +296,7 @@
   <div class="hint">
     Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
     Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
-    <br><br>Version v7 – Diazepam-Äquivalent als Standard, Tagesbeginn einstellbar, Tagesband.
+    <br><br>Version v8 – Zurücksetzen, Handelsnamen erkannt, nicht umrechenbare Einträge werden gemeldet.
   </div>
 </div>
 
@@ -394,7 +404,7 @@
       <div class="day-group">
         <div class="day-label">
           <span class="d">${g.label}</span>
-          <span class="sum">${escapeHtml(summarize(g.items))}<span class="avg">${gi===0 ? escapeHtml(avgTxt) : ''}</span></span>
+          <span class="sum">${escapeHtml(summarize(g.items))}${(m && m.missing && m.missing(g.items)) ? '<span class="miss" title="Ein Eintrag konnte nicht umgerechnet werden – siehe Statistik">!</span>' : ''}<span class="avg">${gi===0 ? escapeHtml(avgTxt) : ''}</span></span>
         </div>
         ${band}
         ${g.items.map(e => {
@@ -559,6 +569,47 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
+
+  // ---------- alles löschen ----------
+  const resetBtn = document.getElementById('resetBtn');
+  const resetConfirm = document.getElementById('resetConfirm');
+  const resetWarn = document.getElementById('resetWarn');
+
+  function resetIdle(){
+    resetBtn.style.display = '';
+    resetConfirm.style.display = 'none';
+  }
+
+  resetBtn.addEventListener('click', ()=>{
+    if(entries.length === 0){
+      resetWarn.textContent = 'Es sind keine Einträge da.';
+      resetConfirm.style.display = '';
+      resetBtn.style.display = 'none';
+      document.getElementById('resetGo').style.display = 'none';
+      return;
+    }
+    document.getElementById('resetGo').style.display = '';
+    resetWarn.innerHTML = '<strong>' + entries.length + (entries.length===1 ? ' Eintrag' : ' Einträge') +
+      '</strong> werden gelöscht. Das lässt sich nicht rückgängig machen – es gibt keine Kopie auf einem Server. ' +
+      'Wenn du sie noch brauchst, vorher oben auf „Als JSON exportieren".';
+    resetBtn.style.display = 'none';
+    resetConfirm.style.display = '';
+  });
+
+  document.getElementById('resetCancel').addEventListener('click', resetIdle);
+
+  document.getElementById('resetGo').addEventListener('click', ()=>{
+    entries = [];
+    persist();
+    activeFilter = 'Alle';
+    document.getElementById('searchInput').value = '';
+    resetIdle();
+    closeSheets();
+    renderChips();
+    renderList();
+  });
+
+  overlay.addEventListener('click', resetIdle);
 
   document.getElementById('importInput').addEventListener('change', (ev)=>{
     const file = ev.target.files[0];

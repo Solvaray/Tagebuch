@@ -70,13 +70,92 @@
     'zopiclon': 7.5,
     'zolpidem': 20,
     'zaleplon': 20,
-    'etizolam': 1
+    'etizolam': 1,
+
+    // Handelsnamen, die in Deutschland gebraeuchlich sind
+    'valium': 10, 'faustan': 10, 'diazep': 10,
+    'tafil': 0.5, 'xanax': 0.5,
+    'rivotril': 0.5, 'antelepsin': 0.5,
+    'tavor': 1, 'temesta': 1,
+    'noctamid': 1,
+    'rohypnol': 1,
+    'lexotanil': 5.5, 'normoc': 5.5, 'bromazanil': 5.5,
+    'radedorm': 10, 'mogadan': 10,
+    'adumbran': 20, 'praxiten': 20,
+    'planum': 20, 'remestan': 20, 'norkotral': 20,
+    'frisium': 20,
+    'dalmadorm': 22.5, 'staurodorm': 22.5,
+    'librium': 25, 'multum': 25,
+    'tranxilium': 15,
+    'demetrin': 15,
+    'dormicum': 10,
+    'ximovan': 7.5, 'zopiclon': 7.5, 'optidorm': 7.5,
+    'stilnox': 20, 'bikalm': 20, 'zolpi': 20,
+    'sonata': 20
   };
 
+  /* "Tavor 1,0", "Alprazolam (Xanax)", "diazepam " sollen alle greifen:
+     erstes Wort, kleingeschrieben, ohne Ziffern und Sonderzeichen. */
+  function normName(name) {
+    return String(name || '').toLowerCase().trim()
+      .split(/[\s,;/()\-]+/)[0]
+      .replace(/[^a-zäöüß]/g, '');
+  }
   function eqFactor(name) {
-    var key = String(name || '').trim().toLowerCase();
-    var mg = DIAZEPAM_EQ[key];
+    var mg = DIAZEPAM_EQ[normName(name)];
     return mg ? (10 / mg) : null;
+  }
+
+  /* Damerau-Levenshtein, nur um einen Tippfehler VORZUSCHLAGEN.
+     Es wird nie automatisch korrigiert - bei Wirkstoffnamen waere Raten
+     gefaehrlicher als eine fehlende Zahl. */
+  function editDistance(a, b) {
+    var m = a.length, n = b.length, d = [], i, j;
+    for (i = 0; i <= m; i++) { d[i] = [i]; }
+    for (j = 0; j <= n; j++) { d[0][j] = j; }
+    for (i = 1; i <= m; i++) {
+      for (j = 1; j <= n; j++) {
+        var c = a[i - 1] === b[j - 1] ? 0 : 1;
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+        if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+          d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + c);
+        }
+      }
+    }
+    return d[m][n];
+  }
+  function suggestName(name) {
+    var k = normName(name);
+    if (!k || k.length < 4) return null;
+    var best = null, bestD = 3;
+    Object.keys(DIAZEPAM_EQ).forEach(function (cand) {
+      var dd = editDistance(k, cand);
+      if (dd < bestD) { bestD = dd; best = cand; }
+      else if (dd === bestD) { best = null; }
+    });
+    return best ? best.charAt(0).toUpperCase() + best.slice(1) : null;
+  }
+
+  /* Eintraege, die im Aequivalent-Modus mit 0 zaehlen wuerden. Die muessen
+     sichtbar sein - sonst fehlt Menge in der Gesamtsumme, ohne dass es
+     irgendwo auffaellt. */
+  function unconverted(entries) {
+    var out = {};
+    entries.forEach(function (e) {
+      if (e.amount == null || e.amount === '' || isNaN(e.amount)) return;
+      if (eqValue(e) !== null) return;
+      var k = (e.name || '–') + '|' + (e.unit || '');
+      if (!out[k]) {
+        out[k] = {
+          name: e.name || '–',
+          unit: (e.unit || '').trim(),
+          count: 0,
+          reason: String(e.unit || '').trim().toLowerCase() !== 'mg' ? 'unit' : 'name'
+        };
+      }
+      out[k].count++;
+    });
+    return Object.keys(out).map(function (k) { return out[k]; });
   }
 
   /* Nur sinnvoll, wenn die Menge auch in mg erfasst ist. */
@@ -347,7 +426,20 @@
         barChart(series, avg, unitLabel) +
       '</div>' +
       '<div class="stats-cards">' + cards + '</div>' +
-      (useEq ? '<div class="stats-note">Umgerechnet auf Diazepam-Äquivalent nach der Ashton-Tabelle. Näherungswerte – Quellen weichen voneinander ab, und Einträge ohne mg oder ohne bekannten Wirkstoff zählen mit 0. Keine Dosierungsempfehlung: Umstellen oder Ausschleichen gehört ärztlich begleitet.</div>' : '') +
+      (useEq ? (function () {
+        var miss = unconverted(inRange);
+        var warn = '';
+        if (miss.length) {
+          warn = '<div class="stats-warn"><strong>Nicht mitgerechnet:</strong> ' + miss.map(function (m) {
+            if (m.reason === 'unit') {
+              return esc(m.name) + ' (' + m.count + '×, Einheit „' + esc(m.unit || '–') + '" statt mg)';
+            }
+            var s = suggestName(m.name);
+            return esc(m.name) + ' (' + m.count + '×, unbekannt' + (s ? ' – meintest du ' + esc(s) + '?' : '') + ')';
+          }).join(', ') + '. Diese Einträge fehlen in der Summe oben. Namen im Eintrag korrigieren, dann stimmt sie.</div>';
+        }
+        return warn + '<div class="stats-note">Umgerechnet auf Diazepam-Äquivalent nach der Ashton-Tabelle. Näherungswerte – Quellen weichen voneinander ab. Keine Dosierungsempfehlung: Umstellen oder Ausschleichen gehört ärztlich begleitet.</div>';
+      })() : '') +
       (truncated ? '<div class="stats-note">Erfasst seit ' + esc(series.labels[0]) + ' – ausgewertet werden ' + trackedDays + (trackedDays === 1 ? ' Tag' : ' Tage') + ', nicht ' + state.range + '.</div>' : '') +
       section('Top-Einträge', '') + hBars(top, unitLabel) +
       section('Nach Wochentag', '') + miniBars(wd, wdNames) +
@@ -444,6 +536,7 @@
       '.minibar{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;height:100%}' +
       '.minibar-fill{width:100%;max-width:26px;background:linear-gradient(180deg,#8fab98,rgba(124,152,133,.35));border-radius:5px 5px 0 0}' +
       '.minibar-label{font-size:9px;color:var(--text-dim);margin-top:5px;font-family:JetBrains Mono,monospace}' +
+      '.stats-warn{font-size:11.5px;color:#d99a6a;background:rgba(217,154,106,.09);border:1px solid rgba(217,154,106,.28);border-radius:10px;padding:10px 12px;margin:-6px 0 14px;line-height:1.5}' +
       '.stats-note{font-size:11px;color:var(--text-dim);margin:-10px 0 18px;line-height:1.5}' +
       '.stats-empty{color:var(--text-dim);font-size:13px;padding:24px 0;text-align:center;line-height:1.6}';
     document.head.appendChild(style);
@@ -566,6 +659,7 @@
           .map(function (k) { return { name: k, value: by[k], color: colorOf[k] || BAND_COLORS[BAND_COLORS.length - 1] }; });
       },
       colorOf: function (n) { return colorOf[n] || BAND_COLORS[BAND_COLORS.length - 1]; },
+      missing: function (day) { return mode === 'eq' ? unconverted(day).length : 0; },
       fmt: num
     };
   }
