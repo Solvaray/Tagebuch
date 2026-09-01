@@ -12,6 +12,11 @@
 
   // ---------- Daten ----------
   function loadEntries() {
+    // Bei aktiver App-Sperre steht im localStorage nur Chiffretext - die
+    // entschluesselten Eintraege liegen dann im Speicher der Liste.
+    if (window.TagebuchData && Array.isArray(window.TagebuchData.entries)) {
+      return window.TagebuchData.entries;
+    }
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
     catch (e) { return []; }
   }

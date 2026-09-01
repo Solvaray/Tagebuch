@@ -186,6 +186,28 @@
   .menu-btn:active{background:var(--border);}
   .menu-btn.danger{color:var(--danger); border-color:rgba(194,104,90,.35);}
   .hint{font-size:12px; color:var(--text-dim); line-height:1.5; margin-top:14px;}
+
+  .lockscreen{
+    position:fixed; inset:0; z-index:60; background:var(--bg);
+    display:none; align-items:center; justify-content:center; padding:24px;
+  }
+  .lockscreen.open{display:flex;}
+  .lock-box{width:100%; max-width:300px; text-align:center;}
+  .lock-icon{
+    width:52px; height:52px; margin:0 auto 18px; border-radius:16px;
+    background:var(--accent-dim); color:var(--accent);
+    display:flex; align-items:center; justify-content:center;
+  }
+  .lock-box h2{font-size:20px; margin:0 0 6px;}
+  .lock-hint{font-size:13px; color:var(--text-dim); margin:0 0 20px;}
+  .lock-box input{
+    width:100%; background:var(--surface-2); border:1px solid var(--border); color:var(--text);
+    border-radius:10px; padding:13px 14px; font-family:inherit; font-size:17px; outline:none;
+    text-align:center; letter-spacing:.18em; margin-bottom:12px;
+  }
+  .lock-box input:focus{border-color:var(--accent);}
+  .lock-box .btn{width:100%;}
+  .lock-error{color:var(--danger); font-size:13px; min-height:20px; margin-top:12px;}
 </style>
 </head>
 <body>
@@ -214,6 +236,21 @@
   <main id="list"></main>
 
   <button class="fab" id="addBtn">+ Eintrag</button>
+</div>
+
+<div class="lockscreen" id="lockScreen">
+  <div class="lock-box">
+    <div class="lock-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>
+      </svg>
+    </div>
+    <h2>Tagebuch</h2>
+    <p class="lock-hint">Zum Entsperren deinen Code eingeben.</p>
+    <input type="password" id="lockInput" inputmode="text" autocomplete="current-password" placeholder="Code">
+    <button class="btn btn-primary" id="lockGo">Entsperren</button>
+    <div class="lock-error" id="lockError"></div>
+  </div>
 </div>
 
 <div class="sheet-overlay" id="overlay"></div>
@@ -271,6 +308,41 @@
     ⇧ JSON importieren
     <input type="file" id="importInput" accept="application/json" style="display:none;">
   </label>
+  <button class="menu-btn" id="lockSetupBtn">🔒 App-Sperre einrichten</button>
+  <div id="lockSetup" style="display:none;">
+    <div class="hint" style="margin-top:0;">
+      Deine Einträge werden dann auf diesem Gerät verschlüsselt gespeichert und die App fragt beim Öffnen nach dem Code.
+      <strong style="color:var(--danger);">Es gibt keine Wiederherstellung.</strong> Code vergessen heißt Daten weg –
+      es liegt keine Kopie auf einem Server. Vorher exportieren.
+    </div>
+    <div class="field" style="margin-top:12px;">
+      <label>Code (mindestens 4 Zeichen)</label>
+      <input type="password" id="lockNew" autocomplete="new-password">
+    </div>
+    <div class="field">
+      <label>Code wiederholen</label>
+      <input type="password" id="lockNew2" autocomplete="new-password">
+    </div>
+    <div class="hint" id="lockSetupMsg" style="margin-top:0; color:var(--danger);"></div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" id="lockSetupCancel">Abbrechen</button>
+      <button class="btn btn-primary" id="lockSetupGo">Sperre aktivieren</button>
+    </div>
+  </div>
+  <button class="menu-btn" id="lockNowBtn" style="display:none;">🔒 Jetzt sperren</button>
+  <button class="menu-btn danger" id="lockOffBtn" style="display:none;">Sperre aufheben</button>
+  <div id="lockOff" style="display:none;">
+    <div class="field" style="margin-top:0;">
+      <label>Zur Bestätigung: aktueller Code</label>
+      <input type="password" id="lockOffCode" autocomplete="current-password">
+    </div>
+    <div class="hint" id="lockOffMsg" style="margin-top:0; color:var(--danger);"></div>
+    <div class="sheet-actions">
+      <button class="btn btn-ghost" id="lockOffCancel">Abbrechen</button>
+      <button class="btn btn-danger" id="lockOffGo">Sperre aufheben</button>
+    </div>
+  </div>
+
   <button class="menu-btn danger" id="resetBtn" style="margin-bottom:0;">⌫ Alle Einträge löschen</button>
   <div id="resetConfirm" style="display:none;">
     <div class="hint" id="resetWarn" style="color:var(--danger);"></div>
@@ -296,10 +368,11 @@
   <div class="hint">
     Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
     Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
-    <br><br>Version v8 – Zurücksetzen, Handelsnamen erkannt, nicht umrechenbare Einträge werden gemeldet.
+    <br><br>Version v9 – App-Sperre mit Verschlüsselung, Zurücksetzen, Handelsnamen.
   </div>
 </div>
 
+<script src="lock.js"></script>
 <script src="stats.js"></script>
 <script>
 (function(){
@@ -308,12 +381,26 @@
   let activeFilter = 'Alle';
   let editingId = null;
 
-  try{
-    entries = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  }catch(e){ entries = []; }
+  const Lock = window.TagebuchLock;
+  const locked = () => Lock && Lock.isEnabled();
+
+  if(!locked()){
+    try{ entries = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+    catch(e){ entries = []; }
+  }
+  // stats.js liest die Einträge hierüber, damit es bei aktiver Sperre
+  // nicht am verschlüsselten localStorage vorbei muss
+  window.TagebuchData = { entries: entries };
 
   function persist(){
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    window.TagebuchData.entries = entries;
+    if(locked()){
+      Lock.saveEntries(entries).catch(err => {
+        alert('Speichern fehlgeschlagen: ' + err.message + '\nBitte Eintrag erneut anlegen.');
+      });
+    } else {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+    }
   }
   function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
   function pad(n){ return n.toString().padStart(2,'0'); }
@@ -570,6 +657,117 @@
     URL.revokeObjectURL(url);
   }
 
+  // ---------- App-Sperre ----------
+  const lockScreen = document.getElementById('lockScreen');
+  const lockInput = document.getElementById('lockInput');
+  const lockError = document.getElementById('lockError');
+
+  function showLockScreen(){
+    lockScreen.classList.add('open');
+    lockError.textContent = '';
+    lockInput.value = '';
+    setTimeout(()=> lockInput.focus(), 80);
+  }
+  function hideLockScreen(){ lockScreen.classList.remove('open'); }
+
+  window.TagebuchOnAutoLock = () => { entries = []; window.TagebuchData.entries = entries; showLockScreen(); };
+
+  async function doUnlock(){
+    lockError.textContent = '';
+    const code = lockInput.value;
+    if(!code) return;
+    document.getElementById('lockGo').disabled = true;
+    try{
+      await Lock.unlock(code);
+      entries = await Lock.loadEntries();
+      window.TagebuchData.entries = entries;
+      hideLockScreen();
+      renderChips(); renderList();
+    }catch(err){
+      lockError.textContent = err.message;
+      lockInput.value = '';
+      lockInput.focus();
+    }finally{
+      document.getElementById('lockGo').disabled = false;
+    }
+  }
+  document.getElementById('lockGo').addEventListener('click', doUnlock);
+  lockInput.addEventListener('keydown', e => { if(e.key === 'Enter') doUnlock(); });
+
+  const lockSetup = document.getElementById('lockSetup');
+  const lockOff = document.getElementById('lockOff');
+
+  function refreshLockMenu(){
+    const on = locked();
+    document.getElementById('lockSetupBtn').style.display = on ? 'none' : '';
+    document.getElementById('lockNowBtn').style.display = on ? '' : 'none';
+    document.getElementById('lockOffBtn').style.display = on ? '' : 'none';
+    lockSetup.style.display = 'none';
+    lockOff.style.display = 'none';
+  }
+
+  document.getElementById('lockSetupBtn').addEventListener('click', ()=>{
+    if(!Lock || !Lock.available()){
+      alert('Dieser Browser stellt keine Verschlüsselung bereit. Die Seite muss über https geöffnet sein.');
+      return;
+    }
+    document.getElementById('lockSetupMsg').textContent = '';
+    document.getElementById('lockNew').value = '';
+    document.getElementById('lockNew2').value = '';
+    document.getElementById('lockSetupBtn').style.display = 'none';
+    lockSetup.style.display = '';
+  });
+  document.getElementById('lockSetupCancel').addEventListener('click', refreshLockMenu);
+
+  document.getElementById('lockSetupGo').addEventListener('click', async ()=>{
+    const msg = document.getElementById('lockSetupMsg');
+    const a = document.getElementById('lockNew').value;
+    const b = document.getElementById('lockNew2').value;
+    msg.textContent = '';
+    if(a.length < 4){ msg.textContent = 'Mindestens 4 Zeichen.'; return; }
+    if(a !== b){ msg.textContent = 'Die beiden Eingaben stimmen nicht überein.'; return; }
+    try{
+      await Lock.enable(a, entries);
+      refreshLockMenu();
+      closeSheets();
+      alert('Sperre ist aktiv. Deine Einträge liegen jetzt verschlüsselt auf diesem Gerät.');
+    }catch(err){
+      msg.textContent = err.message;
+    }
+  });
+
+  document.getElementById('lockNowBtn').addEventListener('click', ()=>{
+    Lock.lockNow();
+    entries = [];
+    window.TagebuchData.entries = entries;
+    closeSheets();
+    renderChips(); renderList();
+    showLockScreen();
+  });
+
+  document.getElementById('lockOffBtn').addEventListener('click', ()=>{
+    document.getElementById('lockOffMsg').textContent = '';
+    document.getElementById('lockOffCode').value = '';
+    document.getElementById('lockOffBtn').style.display = 'none';
+    lockOff.style.display = '';
+  });
+  document.getElementById('lockOffCancel').addEventListener('click', refreshLockMenu);
+
+  document.getElementById('lockOffGo').addEventListener('click', async ()=>{
+    const msg = document.getElementById('lockOffMsg');
+    msg.textContent = '';
+    try{
+      entries = await Lock.disable(document.getElementById('lockOffCode').value);
+      window.TagebuchData.entries = entries;
+      refreshLockMenu();
+      closeSheets();
+      renderChips(); renderList();
+      alert('Sperre aufgehoben. Die Einträge liegen wieder unverschlüsselt auf diesem Gerät.');
+    }catch(err){
+      msg.textContent = err.message;
+    }
+  });
+
   // ---------- alles löschen ----------
   const resetBtn = document.getElementById('resetBtn');
   const resetConfirm = document.getElementById('resetConfirm');
@@ -601,6 +799,7 @@
   document.getElementById('resetGo').addEventListener('click', ()=>{
     entries = [];
     persist();
+    window.TagebuchData.entries = entries;
     activeFilter = 'Alle';
     document.getElementById('searchInput').value = '';
     resetIdle();
@@ -635,8 +834,13 @@
     ev.target.value = '';
   });
 
-  renderChips();
-  renderList();
+  refreshLockMenu();
+  if(locked()){
+    showLockScreen();
+  } else {
+    renderChips();
+    renderList();
+  }
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
