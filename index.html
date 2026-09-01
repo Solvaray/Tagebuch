@@ -43,16 +43,17 @@
   header{
     position:sticky; top:0; z-index:10;
     background:linear-gradient(var(--bg) 80%, transparent);
-    padding:18px 16px 10px;
+    padding:calc(18px + env(safe-area-inset-top)) 16px 10px;
   }
-  .top-row{display:flex; align-items:center; justify-content:space-between; gap:10px;}
-  h1{font-size:20px; font-weight:700; margin:0; letter-spacing:.2px;}
+  .top-row{display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:38px;}
+  h1{font-size:20px; font-weight:700; margin:0; letter-spacing:.2px; flex:1; text-align:center;}
   .icon-btn{
     background:var(--surface); border:1px solid var(--border); color:var(--text-dim);
     width:38px; height:38px; border-radius:10px; display:flex; align-items:center; justify-content:center;
     cursor:pointer; flex-shrink:0;
   }
   .icon-btn:active{background:var(--surface-2);}
+  .icon-btn svg{display:block;}
 
   .search{
     margin-top:12px; display:flex; align-items:center; gap:8px;
@@ -74,31 +75,66 @@
   .chip .n{font-family:'JetBrains Mono',monospace; font-size:11px; opacity:.7;}
   .chip.active{background:var(--accent-dim); border-color:var(--accent); color:var(--accent);}
 
-  main{flex:1; padding:6px 16px 100px;}
-  .day-group{margin-top:20px;}
+  main{flex:1; padding:0 16px calc(110px + env(safe-area-inset-bottom));}
+  .day-group{margin:0;}
   .day-label{
+    display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+    margin:22px 2px 2px;
+  }
+  .day-label .d{
     font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);
-    text-transform:uppercase; letter-spacing:.08em; margin:0 0 8px 4px;
+    text-transform:uppercase; letter-spacing:.08em;
   }
+  .day-label .sum{
+    font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--accent);
+    white-space:nowrap;
+  }
+  .day-label .avg{color:var(--text-dim);}
+  /* Tagesband: Laenge = Tagesmenge im Verhaeltnis zum staerksten Tag der Ansicht,
+     Abschnitte = Anteil der einzelnen Wirkstoffe. Vergleich mit sich selbst,
+     bewusst keine Grenzwerte und keine Ampelfarben. */
+  .dayband{
+    height:6px; border-radius:3px; background:var(--surface-2);
+    margin:8px 2px 4px; overflow:hidden;
+  }
+  .dayband .fill{display:flex; height:100%; border-radius:3px; overflow:hidden;}
+  .dayband .fill span{height:100%;}
+  .band-legend{
+    display:flex; flex-wrap:wrap; gap:6px 14px; margin:22px 2px 0;
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--text-dim);
+  }
+  .band-legend i{
+    display:inline-block; width:8px; height:8px; border-radius:2px;
+    margin-right:5px; vertical-align:middle;
+  }
+  /* Protokollzeile: Uhrzeit als feste Spalte, damit der Tagesrhythmus lesbar wird */
   .entry{
-    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
-    padding:12px 14px; margin-bottom:8px; cursor:pointer; display:flex; gap:12px; align-items:flex-start;
+    display:grid; grid-template-columns:46px 1fr auto; gap:11px; align-items:baseline;
+    padding:12px 6px; min-height:48px; cursor:pointer;
+    border-top:1px solid var(--border); border-radius:8px;
   }
-  .entry:active{background:var(--surface-2);}
-  .dot{width:8px; height:8px; border-radius:50%; background:var(--accent); margin-top:6px; flex-shrink:0;}
-  .entry-body{flex:1; min-width:0;}
-  .entry-top{display:flex; justify-content:space-between; gap:8px; align-items:baseline;}
-  .entry-name{font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-  .entry-time{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--text-dim); flex-shrink:0;}
-  .entry-meta{display:flex; gap:8px; margin-top:4px; align-items:center; flex-wrap:wrap;}
-  .entry-amount{font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--accent);}
-  .entry-cat{font-size:12px; color:var(--text-dim);}
-  .entry-note{font-size:13px; color:var(--text-dim); margin-top:5px; line-height:1.4;}
+  .entry:first-of-type{border-top:none;}
+  .entry:active{background:var(--surface);}
+  .entry-time{
+    font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--text-dim);
+    font-variant-numeric:tabular-nums;
+  }
+  .entry-main{min-width:0;}
+  .entry-name{
+    font-weight:600; font-size:15px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .entry-sub{
+    display:block; font-size:12.5px; color:var(--text-dim); margin-top:2px; line-height:1.35;
+  }
+  .entry-amount{
+    font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--accent);
+    font-variant-numeric:tabular-nums; white-space:nowrap;
+  }
 
   .empty{text-align:center; color:var(--text-dim); padding:60px 20px; font-size:14px; line-height:1.6;}
 
   .fab{
-    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    position:fixed; bottom:calc(24px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%);
     background:var(--accent); color:#0f1210; border:none; border-radius:999px;
     padding:14px 26px; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:15px;
     display:flex; align-items:center; gap:8px; box-shadow:0 8px 24px rgba(0,0,0,.4); cursor:pointer;
@@ -154,9 +190,17 @@
 <div id="app">
   <header>
     <div class="top-row">
+      <button class="icon-btn" id="statsBtn" title="Statistik" aria-label="Statistik">
+        <svg viewBox="0 0 20 20" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 15V9M10 15V4M16 15v-4"/>
+        </svg>
+      </button>
       <h1>Tagebuch</h1>
-      <button class="icon-btn" id="statsBtn" title="Statistik">▤</button>
-      <button class="icon-btn" id="menuBtn" title="Export / Import">⋯</button>
+      <button class="icon-btn" id="menuBtn" title="Daten" aria-label="Daten">
+        <svg viewBox="0 0 20 20" width="17" height="17" fill="currentColor">
+          <circle cx="4" cy="10" r="1.6"/><circle cx="10" cy="10" r="1.6"/><circle cx="16" cy="10" r="1.6"/>
+        </svg>
+      </button>
     </div>
     <div class="search">
       <span class="mono" style="color:var(--text-dim); font-size:14px;">⌕</span>
@@ -225,12 +269,28 @@
     ⇧ JSON importieren
     <input type="file" id="importInput" accept="application/json" style="display:none;">
   </label>
+  <div class="field" style="margin-top:18px;">
+    <label>Tagesbeginn</label>
+    <select id="dayStartSel">
+      <option value="0">00:00 – Mitternacht</option>
+      <option value="3">03:00</option>
+      <option value="4">04:00</option>
+      <option value="5">05:00</option>
+      <option value="6">06:00</option>
+    </select>
+  </div>
+  <div class="hint" style="margin-top:8px;">
+    Einträge vor dieser Uhrzeit zählen zum Vortag. Ein Eintrag um 00:45 gehört so zum Abend davor
+    statt zu einem neuen Tag – das betrifft auch Tagessummen und konsumfreie Tage.
+  </div>
   <div class="hint">
     Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
     Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
+    <br><br>Version v6 – Tagesbeginn einstellbar, Protokoll-Ansicht mit Tagesband, Diazepam-Äquivalent.
   </div>
 </div>
 
+<script src="stats.js"></script>
 <script>
 (function(){
   const STORAGE_KEY = 'tagebuch_entries_v1';
@@ -250,8 +310,14 @@
   function toLocalInputValue(d){
     return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
   }
+  // Logischer Tag: Eintraege vor dem eingestellten Tagesbeginn zaehlen zum Vortag
+  const logicalDate = (d) => (window.TagebuchStats && window.TagebuchStats.logicalDate)
+    ? window.TagebuchStats.logicalDate(d)
+    : (()=>{ const x = new Date(d); x.setHours(0,0,0,0); return x; })();
+
   function fmtDay(d){
-    const today = new Date(); const yest = new Date(); yest.setDate(today.getDate()-1);
+    const today = logicalDate(new Date());
+    const yest = new Date(today.getTime() - 86400000);
     const sameDay = (a,b)=> a.toDateString()===b.toDateString();
     if(sameDay(d, today)) return 'Heute';
     if(sameDay(d, yest)) return 'Gestern';
@@ -292,33 +358,65 @@
 
     const groups = {};
     filtered.forEach(e=>{
-      const d = new Date(e.time);
+      const d = logicalDate(new Date(e.time));
       const key = d.toDateString();
       if(!groups[key]) groups[key] = {label: fmtDay(d), items: []};
       groups[key].items.push(e);
     });
 
-    list.innerHTML = Object.values(groups).map(g => `
+    // Tagessumme und Band mit derselben Logik wie die Statistik, falls stats.js geladen ist
+    const m = (window.TagebuchStats && window.TagebuchStats.listMetrics)
+      ? window.TagebuchStats.listMetrics(filtered) : null;
+    const summarize = m ? (day => m.label(day))
+      : (day => day.length + (day.length===1 ? ' Eintrag' : ' Einträge'));
+    const dayGroups = Object.values(groups);
+    const maxDay = m ? Math.max(...dayGroups.map(g => m.total(g.items)), 0) : 0;
+    const avgTxt = (m && m.average != null && m.mode !== 'count') ? ' · Ø ' + m.fmt(m.average) : '';
+    const usedNames = new Map();
+
+    // Kategorie nur zeigen, wenn sie ueberhaupt unterscheidet
+    const catCount = new Set(filtered.map(e => e.category || 'Sonstiges')).size;
+    const showCat = activeFilter === 'Alle' && catCount > 1;
+
+    list.innerHTML = dayGroups.map((g, gi) => {
+      let band = '';
+      if(m && maxDay > 0){
+        const tot = m.total(g.items);
+        const parts = m.breakdown(g.items);
+        parts.forEach(p => usedNames.set(p.name, p.color));
+        if(tot > 0){
+          const segs = parts.map(p =>
+            `<span style="width:${(p.value/tot*100).toFixed(2)}%; background:${p.color}"></span>`).join('');
+          band = `<div class="dayband"><div class="fill" style="width:${(tot/maxDay*100).toFixed(2)}%">${segs}</div></div>`;
+        }
+      }
+      return `
       <div class="day-group">
-        <div class="day-label">${g.label}</div>
-        ${g.items.map(e => `
+        <div class="day-label">
+          <span class="d">${g.label}</span>
+          <span class="sum">${escapeHtml(summarize(g.items))}<span class="avg">${gi===0 ? escapeHtml(avgTxt) : ''}</span></span>
+        </div>
+        ${band}
+        ${g.items.map(e => {
+          const sub = [showCat ? e.category||'Sonstiges' : '', e.note || ''].filter(Boolean).join(' · ');
+          return `
           <div class="entry" data-id="${e.id}">
-            <div class="dot"></div>
-            <div class="entry-body">
-              <div class="entry-top">
-                <div class="entry-name">${escapeHtml(e.name)}</div>
-                <div class="entry-time mono">${fmtTime(new Date(e.time))}</div>
-              </div>
-              <div class="entry-meta">
-                ${e.amount!=='' && e.amount!=null ? `<span class="entry-amount mono">${e.amount}${e.unit?' '+escapeHtml(e.unit):''}</span>`:''}
-                <span class="entry-cat">${escapeHtml(e.category||'Sonstiges')}</span>
-              </div>
-              ${e.note ? `<div class="entry-note">${escapeHtml(e.note)}</div>` : ''}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    `).join('');
+            <span class="entry-time">${fmtTime(new Date(e.time))}</span>
+            <span class="entry-main">
+              <span class="entry-name">${escapeHtml(e.name)}</span>
+              ${sub ? `<span class="entry-sub">${escapeHtml(sub)}</span>` : ''}
+            </span>
+            <span class="entry-amount">${e.amount!=='' && e.amount!=null ? e.amount+(e.unit?' '+escapeHtml(e.unit):'') : ''}</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    }).join('');
+
+    // Legende nur, wenn das Band ueberhaupt etwas unterscheidet
+    if(usedNames.size > 1){
+      list.innerHTML += '<div class="band-legend">' + [...usedNames].map(([n,c]) =>
+        `<span><i style="background:${c}"></i>${escapeHtml(n)}</span>`).join('') + '</div>';
+    }
 
     list.querySelectorAll('.entry').forEach(el=>{
       el.addEventListener('click', ()=> openForm(el.dataset.id));
@@ -421,6 +519,17 @@
   // ---------- menu: export / import ----------
   document.getElementById('menuBtn').addEventListener('click', ()=> openOverlay(menuSheet));
 
+  const dayStartSel = document.getElementById('dayStartSel');
+  if(window.TagebuchStats && window.TagebuchStats.getDayStart){
+    dayStartSel.value = String(window.TagebuchStats.getDayStart());
+    dayStartSel.addEventListener('change', ()=>{
+      window.TagebuchStats.setDayStart(Number(dayStartSel.value));
+      renderChips(); renderList();
+    });
+  } else {
+    dayStartSel.closest('.field').style.display = 'none';
+  }
+
   document.getElementById('exportJsonBtn').addEventListener('click', ()=>{
     downloadFile(JSON.stringify(entries, null, 2), 'tagebuch-export.json', 'application/json');
   });
@@ -485,6 +594,5 @@
   }
 })();
 </script>
-<script src="stats.js"></script>
 </body>
 </html>

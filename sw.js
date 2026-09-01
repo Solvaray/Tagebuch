@@ -1,4 +1,4 @@
-const CACHE = 'tagebuch-v2';
+const CACHE = 'tagebuch-v6';
 const ASSETS = ['./', './index.html', './stats.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', (e) => {
@@ -13,11 +13,18 @@ self.addEventListener('activate', (e) => {
   self.clients.claim();
 });
 
+/* Netzwerk zuerst, Cache nur als Fallback.
+   Vorher war es umgekehrt - dadurch blieb auf dem Handy ewig die alte Version haengen. */
 self.addEventListener('fetch', (e) => {
-  // nur eigene Requests behandeln, externes (z.B. Google Fonts) normal durchlassen
-  if (e.request.url.startsWith(self.location.origin)) {
-    e.respondWith(
-      caches.match(e.request).then((cached) => cached || fetch(e.request).catch(() => caches.match('./index.html')))
-    );
-  }
+  if (e.request.method !== 'GET') return;
+  if (!e.request.url.startsWith(self.location.origin)) return;
+  e.respondWith(
+    fetch(e.request)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(e.request, copy));
+        return res;
+      })
+      .catch(() => caches.match(e.request).then((cached) => cached || caches.match('./index.html')))
+  );
 });
