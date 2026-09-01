@@ -249,7 +249,7 @@
     var focused = all.filter(function (e) { return matchesFocus(e, state.focus); });
     var ui = unitInfo(focused);
     var hasEq = eqAvailable(focused);
-    var useEq = hasEq && state.metric === 'daeq';
+    var useEq = hasEq && state.metric !== 'menge' && state.metric !== 'anzahl';
     var useSum = !useEq && ui.summable && state.metric !== 'anzahl';
 
     var valueOf = useEq
@@ -399,7 +399,9 @@
     var hasEq = eqAvailable(focusedAll);
     var toggle = sheet.querySelector('#metricToggle');
     toggle.style.display = (ui.summable || hasEq) ? '' : 'none';
-    var active = state.metric === 'anzahl' ? 'anzahl' : (state.metric === 'daeq' && hasEq ? 'daeq' : (ui.summable ? 'menge' : 'anzahl'));
+    var active = state.metric === 'anzahl' ? 'anzahl'
+      : (hasEq && state.metric !== 'menge') ? 'daeq'
+      : (ui.summable ? 'menge' : 'anzahl');
     toggle.querySelectorAll('.range-btn').forEach(function (b) {
       var m = b.dataset.metric;
       b.style.display = (m === 'daeq' && !hasEq) || (m === 'menge' && !ui.summable) ? 'none' : '';

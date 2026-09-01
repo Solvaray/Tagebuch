@@ -1,0 +1,4 @@
+# Im Repo immer LF, damit es keine CRLF-Warnungen und keine
+# Diffs ueber ganze Dateien gibt, nur weil Zeilenenden kippen.
+* text=auto eol=lf
+*.png binary
