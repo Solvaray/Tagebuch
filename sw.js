@@ -1,5 +1,5 @@
-const CACHE = 'tagebuch-v1';
-const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
+const CACHE = 'tagebuch-v2';
+const ASSETS = ['./', './index.html', './stats.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
