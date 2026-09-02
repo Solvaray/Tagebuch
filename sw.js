@@ -1,4 +1,4 @@
-const CACHE = 'tagebuch-v17';
+const CACHE = 'tagebuch-v19';
 const ASSETS = ['./', './index.html', './stats.js', './lock.js', './presets.js',
                 './sync.js', './firebase-config.js', './manifest.json',
                 './icon-192.png', './icon-512.png', './icon-180.png'];

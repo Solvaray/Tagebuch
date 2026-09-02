@@ -25,13 +25,20 @@
       hint: 'Substanzen und Dosis – mit Diazepam-Äquivalent',
       category: 'Konsum', fields: ['menge'], unit: 'mg',
       units: ['mg', 'g', 'ml', 'Stück'],
-      /* Bewusst kurz gehalten: die sechs in Deutschland gaengigen Benzos.
-         Seltenere Stoffe koennen frei eingetippt werden, die Umrechnung in
-         stats.js kennt sie weiterhin. */
-      names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Bromazepam',
-              'Oxazepam',
-              'Zopiclon', 'Zolpidem', 'Zaleplon',
-              'Alkohol', 'Codein', 'Tilidin', 'Tramadol', 'Nikotin', 'Cannabis', 'Ketamin'] },
+      /* Gruppiert statt als eine lange Reihe: sechzehn gleich aussehende
+         Knoepfe zwingen zum Lesen, drei kurze Gruppen zum Zielen. Die
+         Benzos sind bewusst nur die in Deutschland gaengigen - seltenere
+         kann man eintippen, die Umrechnung in stats.js kennt sie weiter. */
+      groups: [
+        { label: 'Benzodiazepine',
+          names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam',
+                  'Bromazepam', 'Oxazepam'] },
+        { label: 'Z-Schlafmittel',
+          names: ['Zopiclon', 'Zolpidem', 'Zaleplon'] },
+        { label: 'Weitere',
+          names: ['Alkohol', 'Codein', 'Tilidin', 'Tramadol', 'Nikotin',
+                  'Cannabis', 'Ketamin'] }
+      ] },
 
     { id: 'medis', title: 'Medikamente',
       hint: 'Verordnetes und Rezeptfreies, ohne Konsumbezug',
@@ -51,23 +58,15 @@
       units: [],
       names: ['Traum', 'Albtraum', 'Klartraum', 'Wiederkehrend', 'Bruchstück',
               'Tagtraum', 'Erwacht davon'] },
-
-    { id: 'essen', title: 'Essen', hint: 'Was, wann, wie viel',
-      category: 'Essen', fields: ['menge'], unit: 'g',
-      units: ['g', 'ml', 'Portion', 'kcal'],
-      names: ['Frühstück', 'Mittag', 'Abendessen', 'Snack', 'Kaffee', 'Wasser'] },
-
-    { id: 'schmerz', title: 'Schmerzen', hint: 'Stärke von 1 bis 10, wo und wann',
-      category: 'Schmerz', fields: ['skala'], scaleLabel: 'Stärke',
-      scaleLow: 'leicht', scaleHigh: 'unerträglich',
-      units: [], names: ['Kopfschmerz', 'Rücken', 'Nacken', 'Bauch', 'Zahn'] },
-
-    { id: 'periode', title: 'Periode', hint: 'Beginn und Ende, Stärke',
-      category: 'Periode', fields: ['dauer', 'skala'], scaleLabel: 'Stärke',
-      scaleLow: 'leicht', scaleHigh: 'stark',
-      units: [], names: ['Periode', 'Zwischenblutung', 'Schmierblutung'] },
-
   ];
+
+  /* Themen mit Gruppen brauchen 'names' trotzdem (Datalist, Suche).
+     Hier einmal ableiten statt die Liste doppelt zu pflegen. */
+  BUILTIN.forEach(function (t) {
+    if (t.groups && !t.names) {
+      t.names = t.groups.reduce(function (acc, g) { return acc.concat(g.names || []); }, []);
+    }
+  });
 
   var FALLBACK = { id: '', title: 'Sonstiges', category: '', fields: ['menge'],
                    unit: '', units: ['mg', 'g', 'ml', 'Stück', '€'], names: [] };
