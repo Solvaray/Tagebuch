@@ -407,6 +407,7 @@
     ⇧ JSON importieren
     <input type="file" id="importInput" accept="application/json" style="display:none;">
   </label>
+  <button class="menu-btn" id="planBtn">↘ Abdosierungsplan</button>
   <button class="menu-btn" id="topicsBtn">◎ Themen ändern</button>
   <div id="topicsPanel" style="display:none;"></div>
 
@@ -501,6 +502,7 @@
 
 <script src="lock.js"></script>
 <script src="wirkstoffe.js"></script>
+<script src="plan.js"></script>
 <script src="presets.js"></script>
 <script type="module" src="sync.js"></script>
 <script src="stats.js"></script>
@@ -789,19 +791,35 @@
     const q = normKey(query);
 
     if(q){
-      const pool = mine.concat((topic.names||[]).filter(n=>mine.indexOf(n)===-1));
+      /* Gesucht wird ueber Wirkstoffe UND Handelsnamen. Wer "Ozempic" tippt,
+         soll Semaglutid finden - gespeichert wird aber der Wirkstoff, sonst
+         stehen fuenf Namen fuer dasselbe Mittel im Tagebuch. */
+      const cat = topic.names || [];
+      const items = mine.map(n=>({ n, via:'' }))
+        .concat(cat.filter(n=>mine.indexOf(n)===-1).map(n=>({ n, via:'' })));
+      const H = window.TagebuchHandelsnamen;
+      if(H && cat.length){
+        Object.keys(H).forEach(h=>{ if(cat.indexOf(H[h])>=0) items.push({ n:H[h], via:h }); });
+      }
+
       const starts = [], has = [];
-      pool.forEach(n=>{
-        const k = normKey(n);
-        if(k.indexOf(q) === 0) starts.push(n);
-        else if(k.indexOf(q) > 0) has.push(n);
+      items.forEach(it=>{
+        const k = normKey(it.via || it.n);
+        if(k.indexOf(q) === 0) starts.push(it);
+        else if(k.indexOf(q) > 0) has.push(it);
       });
-      const hits = starts.concat(has);
-      return hits.length ? [{ label:'', names: hits.slice(0,12) }] : [];
+      const ranked = starts.concat(has);
+
+      // Erst die Wirkstoff-Treffer, dann Handelsnamen - aber keinen Wirkstoff
+      // doppelt, nur weil auch sein Praeparat passt.
+      const direct = {}, hits = [];
+      ranked.forEach(it=>{ if(!it.via && !direct[it.n]){ direct[it.n]=1; hits.push(it); } });
+      ranked.forEach(it=>{ if(it.via && !direct[it.n]) hits.push(it); });
+      return hits.length ? [{ label:'', items: hits.slice(0,12) }] : [];
     }
 
     const out = [];
-    if(mine.length) out.push({ label:'Zuletzt', names: mine.slice(0,8) });
+    if(mine.length) out.push({ label:'Zuletzt', items: mine.slice(0,8).map(n=>({ n, via:'' })) });
     if(topic.suggestOnType) return out;
 
     const groups = (topic.groups && topic.groups.length)
@@ -809,7 +827,7 @@
       : [{ label:'', names: topic.names || [] }];
     groups.forEach(g=>{
       const names = (g.names||[]).filter(n=>mine.indexOf(n)===-1);
-      if(names.length) out.push({ label: g.label || '', names });
+      if(names.length) out.push({ label: g.label || '', items: names.map(n=>({ n, via:'' })) });
     });
     return out;
   }
@@ -822,7 +840,7 @@
     const sections = nameSectionsFor(t, q);
     const flat = [];
     nb.innerHTML = sections.map(sec=>{
-      const chips = sec.names.map(n=>{ flat.push(n); return chip(n); }).join('');
+      const chips = sec.items.map(it=>{ flat.push(it.n); return chip(it.n, it.via); }).join('');
       return (sec.label ? `<div class="chipgroup">${escapeHtml(sec.label)}</div>` : '')
            + `<div class="quickrow">${chips}</div>`;
     }).join('') || (q ? '' : `<div class="chiphint">Tipp ein paar Buchstaben – Vorschläge erscheinen dann.</div>`);
