@@ -263,6 +263,12 @@
   .chipgroup{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
              color:var(--text-dim); opacity:.75; margin:12px 0 -2px;}
   .chiphint{font-size:12.5px; color:var(--text-dim); opacity:.7; margin:10px 0 2px;}
+  .plan-warn{
+    background:rgba(194,104,90,.10); border:1px solid rgba(194,104,90,.35);
+    border-radius:10px; padding:12px 13px; font-size:12.5px; line-height:1.55;
+    color:var(--text-dim); margin:0 0 16px;
+  }
+  .plan-warn strong{color:var(--text); display:block; margin-bottom:4px;}
 
   input[type=range]{
     -webkit-appearance:none; appearance:none; width:100%; height:28px;
@@ -396,6 +402,44 @@
     <button class="btn btn-danger" id="deleteBtn" style="display:none;">Löschen</button>
     <button class="btn btn-primary" id="saveBtn">Speichern</button>
   </div>
+</div>
+
+<div class="sheet" id="planSheet">
+  <div class="sheet-handle"></div>
+  <h2>Abdosierungsplan</h2>
+
+  <div class="plan-warn">
+    <strong>Diese App macht keinen Plan für dich.</strong> Sie rechnet nur mit
+    den Zahlen, die du hier einträgst, und zeigt sie neben deinem tatsächlichen
+    Konsum. Sie ersetzt keinen ärztlichen Abdosierungsplan. Zu schnelles
+    Reduzieren von Benzodiazepinen kann Krampfanfälle auslösen – das gehört
+    ärztlich begleitet.
+  </div>
+
+  <div class="field">
+    <label>Start</label>
+    <input type="date" id="pl_start">
+  </div>
+  <div class="row2">
+    <div class="field"><label>Startdosis (mg DÄ)</label>
+      <input type="number" step="any" min="0" id="pl_from" placeholder=""></div>
+    <div class="field"><label>Zielwert (mg DÄ)</label>
+      <input type="number" step="any" min="0" id="pl_to" placeholder=""></div>
+  </div>
+  <div class="row2">
+    <div class="field"><label>Reduktion je Schritt</label>
+      <input type="number" step="any" min="0" id="pl_step" placeholder=""></div>
+    <div class="field"><label>Schritt alle … Tage</label>
+      <input type="number" step="1" min="1" id="pl_days" placeholder=""></div>
+  </div>
+
+  <div class="hint" id="planPreview"></div>
+
+  <div class="sheet-actions">
+    <button class="btn" id="planCancel">Abbrechen</button>
+    <button class="btn primary" id="planSave">Speichern</button>
+  </div>
+  <button class="menu-btn danger" id="planDelete" style="display:none;margin-top:10px;">Plan löschen</button>
 </div>
 
 <div class="sheet menu-sheet" id="menuSheet">
@@ -689,10 +733,12 @@
     overlay.classList.add('open');
     sheetEl.classList.add('open');
   }
+  const planSheet = document.getElementById('planSheet');
   function closeSheets(){
     overlay.classList.remove('open');
     formSheet.classList.remove('open');
     menuSheet.classList.remove('open');
+    planSheet.classList.remove('open');
   }
   overlay.addEventListener('click', closeSheets);
 
@@ -1056,6 +1102,71 @@
 
   // ---------- menu: export / import ----------
   document.getElementById('menuBtn').addEventListener('click', ()=>{ refreshTopicsLabel(); openOverlay(menuSheet); });
+
+  /* ---------- Abdosierungsplan ----------
+     Bewusst keine Vorbelegung: leere Felder. Sobald hier eine Reduktionsrate
+     vorgeschlagen wuerde, waere es eine Dosierungsempfehlung. */
+  (function planUI(){
+    const P = window.TagebuchPlan;
+    if(!P) return;
+    const F = { start:'pl_start', from:'pl_from', to:'pl_to', step:'pl_step', days:'pl_days' };
+    const g = id => document.getElementById(id);
+    const prev = g('planPreview');
+
+    function fromForm(){
+      return {
+        start: g(F.start).value,
+        startDose: parseFloat(g(F.from).value),
+        targetDose: parseFloat(g(F.to).value),
+        stepAmount: parseFloat(g(F.step).value),
+        stepDays: parseInt(g(F.days).value, 10),
+        unit: 'mg DÄ'
+      };
+    }
+
+    function fmtDate(d){
+      return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'});
+    }
+
+    function preview(){
+      const p = fromForm();
+      if(!P.valid(p)){
+        prev.textContent = 'Alle Felder ausfüllen. Der Zielwert muss unter der Startdosis liegen.';
+        return;
+      }
+      const end = P.endDate(p);
+      const heute = P.targetFor(new Date(), p);
+      const steps = Math.ceil((p.startDose - p.targetDose) / p.stepAmount);
+      prev.textContent = steps + (steps===1?' Schritt':' Schritte') + ' bis ' + p.targetDose
+        + ' mg DÄ, Zielwert am ' + fmtDate(end)
+        + (heute===null ? ' · Start liegt in der Zukunft' : ' · Soll heute ' + heute + ' mg DÄ');
+    }
+
+    Object.keys(F).forEach(k => g(F[k]).addEventListener('input', preview));
+
+    function load(){
+      const p = P.get();
+      if(p){
+        g(F.start).value = p.start; g(F.from).value = p.startDose;
+        g(F.to).value = p.targetDose; g(F.step).value = p.stepAmount;
+        g(F.days).value = p.stepDays;
+        g('planDelete').style.display = '';
+      } else {
+        Object.keys(F).forEach(k => g(F[k]).value = '');
+        g('planDelete').style.display = 'none';
+      }
+      preview();
+    }
+
+    g('planBtn').addEventListener('click', ()=>{ load(); menuSheet.classList.remove('open'); openOverlay(planSheet); });
+    g('planCancel').addEventListener('click', closeSheets);
+    g('planSave').addEventListener('click', ()=>{
+      if(!P.save(fromForm())){ preview(); return; }
+      closeSheets();
+      renderList();
+    });
+    g('planDelete').addEventListener('click', ()=>{ P.clear(); load(); closeSheets(); renderList(); });
+  })();
 
   const dayStartSel = document.getElementById('dayStartSel');
   if(window.TagebuchStats && window.TagebuchStats.getDayStart){

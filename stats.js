@@ -266,10 +266,12 @@
     return n * base;
   }
 
-  function barChart(series, avg, unitLabel, showAvg) {
+  function barChart(series, avg, unitLabel, showAvg, targets) {
     var W = 560, H = 250, padL = 40, padR = 10, padB = 24, padT = 20;
     var n = series.values.length;
-    var peak = Math.max.apply(null, series.values.concat([0]));
+    var known = (targets || []).filter(function (t) { return t !== null && t !== undefined; });
+    // Die Soll-Linie muss mit in die Skala, sonst laeuft sie oben aus dem Bild
+    var peak = Math.max.apply(null, series.values.concat(known).concat([0]));
     var max = niceCeil(peak);
     var innerW = W - padL - padR, innerH = H - padT - padB;
     var slot = innerW / n;
@@ -323,6 +325,24 @@
         ' stroke-linejoin="round" stroke-linecap="round"></polyline>';
     }
 
+    /* Soll-Linie aus dem eigenen Plan. Gestrichelt und in anderer Farbe als
+       der Schnitt, damit niemand die beiden verwechselt. Luecken bleiben
+       Luecken - vor dem Planstart gibt es keinen Sollwert. */
+    var plan = '';
+    if (known.length) {
+      var run = [];
+      var segs = [];
+      (targets || []).forEach(function (t, i) {
+        if (t === null || t === undefined) { if (run.length > 1) segs.push(run); run = []; return; }
+        run.push((padL + slot * i + slot / 2).toFixed(1) + ',' + (baseY - (t / max) * innerH).toFixed(1));
+      });
+      if (run.length > 1) segs.push(run);
+      plan = segs.map(function (pts) {
+        return '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#7fa8c9"' +
+          ' stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"></polyline>';
+      }).join('');
+    }
+
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="Tagesverlauf">' +
       '<defs>' +
         '<linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">' +
@@ -334,7 +354,7 @@
           '<stop offset="100%" stop-color="#d9b26a" stop-opacity="0"></stop>' +
         '</linearGradient>' +
       '</defs>' +
-      grid + trend + bars + values + ticks +
+      grid + trend + bars + plan + values + ticks +
       (unitLabel ? '<text x="' + padL + '" y="11" font-size="10" fill="var(--text-dim)"' +
         ' font-family="JetBrains Mono, monospace">' + esc(unitLabel) + '</text>' : '') +
       '</svg>';
@@ -421,7 +441,19 @@
     var inRange = focused.filter(function (e) { return logicalDate(new Date(e.time)).getTime() >= since; });
     var countInRange = inRange.length;
 
+    /* Sollwerte nur, wenn ueberhaupt in mg DÄ gerechnet wird - der Plan ist
+       in mg DÄ formuliert, alles andere waere ein Vergleich von Äpfeln mit
+       Birnen. */
+    var PL = window.TagebuchPlan;
+    var planOn = useEq && PL && PL.isActive();
+    var targets = planOn ? series.dates.map(function (d) { return PL.targetFor(d); }) : null;
+    var sollHeute = planOn ? PL.targetFor(new Date()) : null;
+    var istHeute = planOn ? (series.values[series.values.length - 1] || 0) : null;
+
     var cards =
+      (planOn && sollHeute !== null
+        ? card('Heute Soll / Ist', num(sollHeute) + ' <span class="unit">/ ' + num(istHeute) + ' mg DÄ</span>')
+        : '') +
       card((useEq ? 'Diaz.-Äquiv. gesamt' : metricWord + ' gesamt'), num(series.total) + (unitLabel ? ' <span class="unit">' + esc(unitLabel) + '</span>' : '')) +
       card('Ø pro Tag', num(Math.round(perDay * 100) / 100) + (unitLabel ? ' <span class="unit">' + esc(unitLabel) + '</span>' : '')) +
       card('Tage ohne Eintrag', freeDays + ' <span class="unit">von ' + trackedDays + '</span>') +
@@ -457,6 +489,7 @@
 
     var showAvg = series.values.length >= 3;
 
+
     var body = sheet.querySelector('#statsBody');
     if (!all.length) {
       body.innerHTML = '<div class="stats-empty">Noch keine Einträge – sobald du welche anlegst, entstehen hier automatisch die Diagramme.</div>';
@@ -466,8 +499,9 @@
     body.innerHTML =
       '<div class="chart-card">' +
         section('Tagesverlauf', '<span class="legend"><i class="l-bar"></i>' + metricWord +
-          (showAvg ? ' <i class="l-line"></i>7-Tage-Schnitt' : '') + '</span>') +
-        barChart(series, avg, unitLabel, showAvg) +
+          (showAvg ? ' <i class="l-line"></i>7-Tage-Schnitt' : '') +
+          (planOn ? ' <i class="l-plan"></i>Plan' : '') + '</span>') +
+        barChart(series, avg, unitLabel, showAvg, targets) +
       '</div>' +
       '<div class="stats-cards">' + cards + '</div>' +
       (useEq ? (function () {
@@ -569,6 +603,7 @@
       '.legend i{display:inline-block;border-radius:2px}' +
       '.legend .l-bar{width:9px;height:9px;background:var(--accent);opacity:.85}' +
       '.legend .l-line{width:12px;height:2px;background:#d9b26a;margin-left:6px}' +
+      '.legend .l-plan{width:12px;height:0;border-top:2px dashed #7fa8c9;margin-left:6px}' +
       '.chart{width:100%;height:auto;display:block}' +
       '.hbars{display:flex;flex-direction:column;gap:7px}' +
       '.hbar-row{display:flex;align-items:center;gap:9px}' +
