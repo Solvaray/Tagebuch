@@ -10,35 +10,56 @@
   var TOPICS_KEY = 'tagebuch_topics_v1';
   var LEGACY_KEY = 'tagebuch_preset_v1';
 
+  /* Ein Thema bestimmt, WELCHE Felder es gibt - nicht nur, was in ihnen
+     vorgeschlagen wird. Feldtypen:
+       menge  Zahl mit Einheit (Einheit kommt vom Thema)
+       skala  1 bis 10 als Schieberegler; gespeichert als Menge mit Einheit "/10"
+       dauer  zusaetzliches Ende; gespeichert als endTime
+       text   grosses Textfeld statt kleiner Notiz
+
+     Wichtig: Alle Feldtypen bilden auf die bestehenden Felder ab
+     (time, name, amount, unit, category, note). Nur "dauer" ergaenzt endTime.
+     Dadurch bleiben alte Eintraege und der Sync unveraendert gueltig. */
   var BUILTIN = [
-    { id: 'konsum', title: 'Konsum', hint: 'Substanz und Menge, mit Diazepam-Äquivalent',
-      category: 'Konsum', units: ['mg', 'g', 'ml', 'Stück'],
-      names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Alkohol', 'Nikotin', 'Koffein'] },
-    { id: 'medis', title: 'Medikamente', hint: 'Einnahme mit Uhrzeit und Dosis',
-      category: 'Medikament', units: ['mg', 'Stück', 'Tropfen', 'ml'],
-      names: ['Ibuprofen', 'Paracetamol', 'Pantoprazol', 'Vitamin D'] },
-    { id: 'essen', title: 'Essen', hint: 'Was, wann, wie viel',
-      category: 'Essen', units: ['g', 'ml', 'Portion', 'kcal'],
-      names: ['Frühstück', 'Mittag', 'Abendessen', 'Snack', 'Kaffee', 'Wasser'] },
+    { id: 'konsum', title: 'Konsum & Medikamente',
+      hint: 'Substanz, Dosis, Uhrzeit – mit Diazepam-Äquivalent',
+      category: 'Konsum', fields: ['menge'], unit: 'mg',
+      units: ['mg', 'g', 'ml', 'Stück', 'Tropfen'],
+      names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Alkohol', 'Nikotin',
+              'Ibuprofen', 'Paracetamol'] },
+
     { id: 'stimmung', title: 'Stimmung', hint: 'Von 1 bis 10, dazu eine Notiz',
-      category: 'Stimmung', units: ['/10'],
-      names: ['Stimmung', 'Anspannung', 'Energie', 'Schlafqualität', 'Craving'] },
-    { id: 'training', title: 'Training', hint: 'Übung, Gewicht, Dauer',
-      category: 'Training', units: ['kg', 'min', 'km', 'Sätze', 'Wdh.'],
-      names: ['Bankdrücken', 'Kniebeuge', 'Kreuzheben', 'Laufen', 'Radfahren'] },
-    { id: 'traeume', title: 'Träume', hint: 'Direkt nach dem Aufwachen, ohne Mengen',
-      category: 'Traum', units: [],
-      names: ['Traum', 'Albtraum', 'Klartraum'] },
-    { id: 'schlaf', title: 'Schlaf', hint: 'Dauer und Qualität',
-      category: 'Schlaf', units: ['Std', 'min', '/10'],
-      names: ['Schlaf', 'Nickerchen', 'Aufgewacht'] },
+      category: 'Stimmung', fields: ['skala'], scaleLabel: 'Wie stark?',
+      units: [], names: ['Stimmung', 'Anspannung', 'Energie', 'Craving'] },
+
+    { id: 'traeume', title: 'Träume', hint: 'Großes Textfeld, keine Mengen',
+      category: 'Traum', fields: ['text'], textLabel: 'Traum',
+      units: [], names: ['Traum', 'Albtraum', 'Klartraum'] },
+
+    { id: 'essen', title: 'Essen', hint: 'Was, wann, wie viel',
+      category: 'Essen', fields: ['menge'], unit: 'g',
+      units: ['g', 'ml', 'Portion', 'kcal'],
+      names: ['Frühstück', 'Mittag', 'Abendessen', 'Snack', 'Kaffee', 'Wasser'] },
+
+    { id: 'schlaf', title: 'Schlaf', hint: 'Von wann bis wann, plus Qualität',
+      category: 'Schlaf', fields: ['dauer', 'skala'], scaleLabel: 'Qualität',
+      units: [], names: ['Schlaf', 'Nickerchen'] },
+
     { id: 'schmerz', title: 'Schmerzen', hint: 'Stärke von 1 bis 10, wo und wann',
-      category: 'Schmerz', units: ['/10'],
-      names: ['Kopfschmerz', 'Rücken', 'Nacken', 'Bauch'] },
-    { id: 'ausgaben', title: 'Ausgaben', hint: 'Wofür und wie viel',
-      category: 'Ausgabe', units: ['€'],
-      names: ['Einkauf', 'Essen gehen', 'Fahrtkosten', 'Abo'] }
+      category: 'Schmerz', fields: ['skala'], scaleLabel: 'Stärke',
+      units: [], names: ['Kopfschmerz', 'Rücken', 'Nacken', 'Bauch', 'Zahn'] },
+
+    { id: 'periode', title: 'Periode', hint: 'Beginn und Ende, Stärke',
+      category: 'Periode', fields: ['dauer', 'skala'], scaleLabel: 'Stärke',
+      units: [], names: ['Periode', 'Zwischenblutung', 'Schmierblutung'] },
+
+    { id: 'ausgaben', title: 'Ausgaben', hint: 'Wofür und wie viel, in Euro',
+      category: 'Ausgabe', fields: ['menge'], unit: '€', units: ['€'],
+      names: ['Einkauf', 'Essen gehen', 'Fahrtkosten', 'Abo', 'Miete'] }
   ];
+
+  var FALLBACK = { id: '', title: 'Sonstiges', category: '', fields: ['menge'],
+                   unit: '', units: ['mg', 'g', 'ml', 'Stück', '€'], names: [] };
 
   // ---------- Speicherung ----------
   function load() {
@@ -80,6 +101,7 @@
     if (list.some(function (t) { return t.id === id; })) return list;
     list.push({
       id: id, title: title, hint: 'Eigenes Thema', category: title,
+      fields: ['menge'], unit: unit ? String(unit).trim() : '',
       units: unit ? [String(unit).trim()] : [], names: [], custom: true
     });
     save(list);
@@ -88,6 +110,19 @@
   function removeTopic(id) {
     save(load().filter(function (t) { return t.id !== id; }));
   }
+
+  /* Welches Thema gehoert zu dieser Kategorie? Danach richtet sich, welche
+     Felder das Formular zeigt. Unbekannte Kategorie -> Standardfelder. */
+  function byCategory(cat) {
+    cat = String(cat || '').trim().toLowerCase();
+    if (!cat) return FALLBACK;
+    var all = load().concat(BUILTIN);
+    for (var i = 0; i < all.length; i++) {
+      if (String(all[i].category || '').toLowerCase() === cat) return all[i];
+    }
+    return FALLBACK;
+  }
+  function fallback() { return FALLBACK; }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -237,6 +272,7 @@
     chosen: chosen, isChosen: isChosen, toggle: toggle,
     addCustom: addCustom, removeTopic: removeTopic,
     applySuggestions: applySuggestions, defaultCategory: defaultCategory,
+    byCategory: byCategory, fallback: fallback, all: BUILTIN,
     pickerHTML: pickerHTML, welcomeHTML: welcomeHTML, bindPicker: bindPicker
   };
 })();

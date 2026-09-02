@@ -639,15 +639,29 @@
      damit sie ueber Tage hinweg stabil bleibt. */
   var BAND_COLORS = ['#7c9885', '#5f8f9a', '#9a8f5f', '#8a7c9d', '#9a7c7c', '#6f9a72', '#5a6169'];
 
+  /* Eine Skala von 1 bis 10 darf man nicht addieren - "Stimmung gesamt: 47"
+     ist Unsinn, "im Schnitt 6,7" nicht. Deshalb ein eigener Modus. */
+  function isScale(entries) {
+    var any = false;
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (e.amount == null || e.amount === '') continue;
+      if (String(e.unit || '').trim() !== '/10') return false;
+      any = true;
+    }
+    return any;
+  }
+
   function listMetrics(entries) {
-    var hasEq = eqAvailable(entries);
+    var scale = isScale(entries);
+    var hasEq = !scale && eqAvailable(entries);
     var ui = unitInfo(entries);
-    var mode = hasEq ? 'eq' : (ui.summable ? 'sum' : 'count');
-    var unit = hasEq ? 'mg DÄ' : (ui.summable ? ui.unit : '');
+    var mode = scale ? 'scale' : (hasEq ? 'eq' : (ui.summable ? 'sum' : 'count'));
+    var unit = scale ? 'von 10' : (hasEq ? 'mg DÄ' : (ui.summable ? ui.unit : ''));
 
     function valueOf(e) {
       if (mode === 'eq') { var v = eqValue(e); return v === null ? 0 : v; }
-      if (mode === 'sum') return Number(e.amount) || 0;
+      if (mode === 'sum' || mode === 'scale') return Number(e.amount) || 0;
       return 1;
     }
 
@@ -673,19 +687,21 @@
     }
 
     function dayTotal(day) {
-      var s = 0;
-      day.forEach(function (e) { s += valueOf(e); });
+      var s = 0, n = 0;
+      day.forEach(function (e) { s += valueOf(e); n++; });
+      if (mode === 'scale') return n ? Math.round((s / n) * 10) / 10 : 0;
       return s;
     }
 
     return {
       mode: mode,
       unit: unit,
-      average: entries.length ? sum / days : null,
+      average: entries.length ? (mode === 'scale' ? sum / entries.length : sum / days) : null,
       total: dayTotal,
       label: function (day) {
         var s = dayTotal(day);
         if (mode === 'count') return s + (s === 1 ? ' Eintrag' : ' Einträge');
+        if (mode === 'scale') return 'Ø ' + num(s) + ' von 10';
         return num(s) + (unit ? ' ' + unit : '');
       },
       breakdown: function (day) {
