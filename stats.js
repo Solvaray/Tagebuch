@@ -76,6 +76,13 @@
     'zolpidem': 20,
     'zaleplon': 20,
     'etizolam': 1,
+    'brotizolam': 0.25,
+    'phenazepam': 1,
+
+    /* Stoffe ohne belastbares veroeffentlichtes Aequivalent stehen hier
+       bewusst nicht drin - etwa die -azolam-Designervarianten. Eine erfundene
+       Zahl waere schlimmer als gar keine: Eingetragen werden koennen sie
+       trotzdem, sie erscheinen dann unter "Nicht mitgerechnet". */
 
     // Handelsnamen, die in Deutschland gebraeuchlich sind
     'valium': 10, 'faustan': 10, 'diazep': 10,

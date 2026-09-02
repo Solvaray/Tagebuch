@@ -28,8 +28,10 @@
       names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Bromazepam',
               'Oxazepam', 'Temazepam', 'Lormetazepam', 'Nitrazepam', 'Flunitrazepam',
               'Midazolam', 'Clobazam', 'Chlordiazepoxid', 'Triazolam', 'Etizolam',
-              'Zopiclon', 'Zolpidem',
-              'Alkohol', 'Codein', 'Nikotin', 'Cannabis', 'Ketamin'] },
+              'Prazepam', 'Clorazepat', 'Nordazepam', 'Medazepam', 'Brotizolam',
+              'Flurazepam', 'Phenazepam',
+              'Zopiclon', 'Zolpidem', 'Zaleplon',
+              'Alkohol', 'Codein', 'Tilidin', 'Tramadol', 'Nikotin', 'Cannabis', 'Ketamin'] },
 
     { id: 'medis', title: 'Medikamente',
       hint: 'Verordnetes und Rezeptfreies, ohne Konsumbezug',
@@ -39,33 +41,32 @@
               'Vitamin D', 'Antibiotikum', 'Blutdrucktablette'] },
 
     { id: 'stimmung', title: 'Stimmung', hint: 'Von 1 bis 10, dazu eine Notiz',
-      category: 'Stimmung', fields: ['skala'], scaleLabel: 'Wie stark?',
+      category: 'Stimmung', fields: ['skala'], scaleLabel: 'Wie war sie?',
+      scaleLow: 'schlecht', scaleHigh: 'gut',
       units: [], names: ['Stimmung', 'Anspannung', 'Energie', 'Craving'] },
 
-    { id: 'traeume', title: 'Träume', hint: 'Großes Textfeld, keine Mengen',
-      category: 'Traum', fields: ['text'], textLabel: 'Traum',
-      units: [], names: ['Traum', 'Albtraum', 'Klartraum'] },
+    { id: 'traeume', title: 'Träume', hint: 'Großes Textfeld und eine Bewertung',
+      category: 'Traum', fields: ['text', 'skala'], textLabel: 'Traum',
+      scaleLabel: 'Wie war er?', scaleLow: 'belastend', scaleHigh: 'schön',
+      units: [],
+      names: ['Traum', 'Albtraum', 'Klartraum', 'Wiederkehrend', 'Bruchstück',
+              'Tagtraum', 'Erwacht davon'] },
 
     { id: 'essen', title: 'Essen', hint: 'Was, wann, wie viel',
       category: 'Essen', fields: ['menge'], unit: 'g',
       units: ['g', 'ml', 'Portion', 'kcal'],
       names: ['Frühstück', 'Mittag', 'Abendessen', 'Snack', 'Kaffee', 'Wasser'] },
 
-    { id: 'schlaf', title: 'Schlaf', hint: 'Von wann bis wann, plus Qualität',
-      category: 'Schlaf', fields: ['dauer', 'skala'], scaleLabel: 'Qualität',
-      units: [], names: ['Schlaf', 'Nickerchen'] },
-
     { id: 'schmerz', title: 'Schmerzen', hint: 'Stärke von 1 bis 10, wo und wann',
       category: 'Schmerz', fields: ['skala'], scaleLabel: 'Stärke',
+      scaleLow: 'leicht', scaleHigh: 'unerträglich',
       units: [], names: ['Kopfschmerz', 'Rücken', 'Nacken', 'Bauch', 'Zahn'] },
 
     { id: 'periode', title: 'Periode', hint: 'Beginn und Ende, Stärke',
       category: 'Periode', fields: ['dauer', 'skala'], scaleLabel: 'Stärke',
+      scaleLow: 'leicht', scaleHigh: 'stark',
       units: [], names: ['Periode', 'Zwischenblutung', 'Schmierblutung'] },
 
-    { id: 'ausgaben', title: 'Ausgaben', hint: 'Wofür und wie viel, in Euro',
-      category: 'Ausgabe', fields: ['menge'], unit: '€', units: ['€'],
-      names: ['Einkauf', 'Essen gehen', 'Fahrtkosten', 'Abo', 'Miete'] }
   ];
 
   var FALLBACK = { id: '', title: 'Sonstiges', category: '', fields: ['menge'],

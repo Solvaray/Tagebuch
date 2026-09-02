@@ -252,6 +252,11 @@
   input[type=range]::-moz-range-track{height:6px; border-radius:3px; background:var(--surface-2);}
   input[type=range]::-moz-range-thumb{width:24px; height:24px; border:none; border-radius:50%; background:var(--accent);}
   .scale-val{color:var(--accent); font-family:'JetBrains Mono',monospace; font-size:14px;}
+  .scale-ends{
+    display:flex; justify-content:space-between; margin-top:2px;
+    font-size:11.5px; color:var(--text-dim);
+  }
+  .scale-ends:empty{display:none;}
 </style>
 </head>
 <body>
@@ -338,6 +343,7 @@
   <div class="field" id="fieldSkala" style="display:none;">
     <label><span id="scaleLabel">Wie stark?</span> — <b class="scale-val" id="scaleVal">5</b> von 10</label>
     <input type="range" min="1" max="10" step="1" value="5" id="f_scale">
+    <div class="scale-ends"><span id="scaleLow"></span><span id="scaleHigh"></span></div>
   </div>
 
   <div class="field" id="fieldDauer" style="display:none;">
@@ -462,7 +468,7 @@
   <div class="hint">
     Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
     Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
-    <br><br>Version v15 – schneller Start, Konsum und Medikamente getrennt, Themen überall wählbar.
+    <br><br>Version v16 – vollständige Wirkstoffliste, Träume mit Bewertung, schneller Start.
   </div>
 </div>
 
@@ -730,7 +736,9 @@
     });
     const mine = Object.keys(count).sort((a,b)=>count[b]-count[a]);
     const rest = (topic.names||[]).filter(n=>mine.indexOf(n)===-1);
-    return mine.concat(rest).slice(0,8);
+    // Alles anbieten, was zum Thema gehoert - eine willkuerliche Grenze bei 8
+    // versteckt genau die Substanz, die jemand gerade sucht
+    return mine.concat(rest).slice(0,40);
   }
 
   // Mengen, die für genau diese Bezeichnung schon vorkamen
@@ -770,7 +778,12 @@
     if(has('menge') && t.unit && !document.getElementById('f_unit').value){
       document.getElementById('f_unit').value = t.unit;
     }
-    if(has('skala')) document.getElementById('scaleLabel').textContent = t.scaleLabel || 'Wie stark?';
+    if(has('skala')){
+      document.getElementById('scaleLabel').textContent = t.scaleLabel || 'Wie stark?';
+      // Ohne benannte Enden weiß niemand, ob 10 gut oder schlecht heißt
+      document.getElementById('scaleLow').textContent = t.scaleLow ? '1 = ' + t.scaleLow : '';
+      document.getElementById('scaleHigh').textContent = t.scaleHigh ? '10 = ' + t.scaleHigh : '';
+    }
 
     const note = document.getElementById('f_note');
     if(has('text')){
@@ -839,8 +852,11 @@
       g('f_note').value = '';
       scaleInput.value = 5; scaleVal.textContent = '5';
       const P = window.TagebuchPresets;
+      // Ohne eigene Themenwahl auf dem ersten echten Thema landen, nicht auf
+      // "Sonstiges" - dort gibt es keine Vorschläge und man tippt wieder alles
+      const pool = P ? (P.chosen().length ? P.chosen() : (P.all || [])) : [];
       const start = activeFilter!=='Alle' ? activeFilter
-        : (P && P.chosen().length ? P.chosen()[0].category : 'Sonstiges');
+        : (pool.length ? pool[0].category : 'Sonstiges');
       applyTopic(start);
       deleteBtn.style.display = 'none';
     }
