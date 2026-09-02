@@ -330,6 +330,31 @@
     ⇧ JSON importieren
     <input type="file" id="importInput" accept="application/json" style="display:none;">
   </label>
+  <div id="syncBlock" style="display:none;">
+    <button class="menu-btn" id="syncOpenBtn">☁ Sync zwischen Geräten</button>
+    <div id="syncPanel" style="display:none;">
+      <div class="hint" style="margin-top:0;" id="syncState"></div>
+      <div id="syncLoggedOut">
+        <div class="field"><label>E-Mail</label><input type="email" id="syncEmail" autocomplete="username"></div>
+        <div class="field"><label>Passwort</label><input type="password" id="syncPass" autocomplete="current-password"></div>
+        <div class="sheet-actions">
+          <button class="btn btn-ghost" id="syncRegister">Registrieren</button>
+          <button class="btn btn-primary" id="syncLogin">Anmelden</button>
+        </div>
+      </div>
+      <div id="syncLoggedIn" style="display:none;">
+        <button class="menu-btn" id="syncNowBtn">⟳ Jetzt synchronisieren</button>
+        <button class="menu-btn" id="syncLogoutBtn">Abmelden</button>
+      </div>
+      <div class="hint" id="syncMsg" style="color:var(--danger);"></div>
+      <div class="hint">
+        Verschlüsselt wird auf diesem Gerät, mit demselben Code wie die App-Sperre.
+        Auf dem Server stehen nur unlesbare Blöcke – auch für den Anbieter.
+      </div>
+      <button class="preset-skip" id="syncClose">Zuklappen</button>
+    </div>
+  </div>
+
   <button class="menu-btn" id="lockSetupBtn">🔒 App-Sperre einrichten</button>
   <div id="lockSetup" style="display:none;">
     <div class="hint" style="margin-top:0;">
@@ -390,12 +415,13 @@
   <div class="hint">
     Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
     Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
-    <br><br>Version v11 – Sheets per Wischen schließbar, Startbildschirm, App-Sperre.
+    <br><br>Version v12 – Cloud-Sync (Ende-zu-Ende verschlüsselt), Wischgeste, App-Sperre.
   </div>
 </div>
 
 <script src="lock.js"></script>
 <script src="presets.js"></script>
+<script type="module" src="sync.js"></script>
 <script src="stats.js"></script>
 <script>
 (function(){
@@ -675,7 +701,8 @@
       amount: document.getElementById('f_amount').value !== '' ? Number(document.getElementById('f_amount').value) : null,
       unit: document.getElementById('f_unit').value.trim(),
       category: document.getElementById('f_category').value.trim() || 'Sonstiges',
-      note: document.getElementById('f_note').value.trim()
+      note: document.getElementById('f_note').value.trim(),
+      updatedAt: new Date().toISOString()
     };
     if(editingId){
       entries = entries.map(e => e.id===editingId ? data : e);
@@ -683,6 +710,7 @@
       entries.push(data);
     }
     persist();
+    if(window.TagebuchSync) window.TagebuchSync.pushOne(data).catch(()=>{});
     closeSheets();
     renderChips();
     renderList();
@@ -691,8 +719,10 @@
   document.getElementById('deleteBtn').addEventListener('click', ()=>{
     if(!editingId) return;
     if(confirm('Eintrag wirklich löschen?')){
-      entries = entries.filter(e=>e.id!==editingId);
+      const goneId = editingId;
+      entries = entries.filter(e=>e.id!==goneId);
       persist();
+      if(window.TagebuchSync) window.TagebuchSync.removeOne(goneId).catch(()=>{});
       closeSheets();
       renderChips();
       renderList();
@@ -744,6 +774,64 @@
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }
+
+  // ---------- Sync ----------
+  function wireSync(){
+    const S = window.TagebuchSync;
+    if(!S) return;
+    const block = document.getElementById('syncBlock');
+    const panel = document.getElementById('syncPanel');
+    const msg = document.getElementById('syncMsg');
+
+    S.onChange((st)=>{
+      block.style.display = st.configured ? '' : 'none';
+      document.getElementById('syncLoggedOut').style.display = st.signedIn ? 'none' : '';
+      document.getElementById('syncLoggedIn').style.display = st.signedIn ? '' : 'none';
+      document.getElementById('syncState').textContent = st.signedIn
+        ? ('Angemeldet als ' + st.email + (st.unlocked ? '' : ' – App entsperren, um zu synchronisieren'))
+        : 'Noch nicht angemeldet.';
+    });
+
+    document.getElementById('syncOpenBtn').addEventListener('click', async ()=>{
+      msg.textContent = '';
+      panel.style.display = '';
+      document.getElementById('syncOpenBtn').style.display = 'none';
+      try{ await S.boot(); }catch(err){ msg.textContent = err.message; }
+    });
+    document.getElementById('syncClose').addEventListener('click', ()=>{
+      panel.style.display = 'none';
+      document.getElementById('syncOpenBtn').style.display = '';
+    });
+
+    async function run(fn){
+      msg.textContent = '';
+      try{ await fn(); }catch(err){ msg.textContent = err.message || String(err); }
+    }
+    const mail = ()=> document.getElementById('syncEmail').value.trim();
+    const pass = ()=> document.getElementById('syncPass').value;
+
+    document.getElementById('syncRegister').addEventListener('click', ()=> run(async ()=>{
+      await S.register(mail(), pass()); await doSync();
+    }));
+    document.getElementById('syncLogin').addEventListener('click', ()=> run(async ()=>{
+      await S.login(mail(), pass()); await doSync();
+    }));
+    document.getElementById('syncLogoutBtn').addEventListener('click', ()=> run(()=> S.logout()));
+    document.getElementById('syncNowBtn').addEventListener('click', ()=> run(doSync));
+
+    async function doSync(){
+      const merged = await S.syncNow(entries);
+      entries = merged;
+      window.TagebuchData.entries = entries;
+      persist();
+      renderChips(); renderList();
+      msg.style.color = 'var(--accent)';
+      msg.textContent = entries.length + ' Einträge synchronisiert.';
+      setTimeout(()=>{ msg.style.color = 'var(--danger)'; msg.textContent=''; }, 4000);
+    }
+  }
+  window.addEventListener('tagebuch-sync-ready', wireSync);
+  wireSync();
 
   // ---------- App-Sperre ----------
   const lockScreen = document.getElementById('lockScreen');

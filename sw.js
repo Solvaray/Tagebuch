@@ -1,5 +1,5 @@
-const CACHE = 'tagebuch-v11';
-const ASSETS = ['./', './index.html', './stats.js', './lock.js', './presets.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
+const CACHE = 'tagebuch-v12';
+const ASSETS = ['./', './index.html', './stats.js', './lock.js', './presets.js', './sync.js', './firebase-config.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));

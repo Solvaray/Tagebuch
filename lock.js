@@ -15,6 +15,9 @@
   var AUTOLOCK_MS = 5 * 60 * 1000;
 
   var memKey = null;          // CryptoKey, nur im Speicher
+  var memCode = null;         // Klartext-Code, ebenfalls nur im Speicher -
+                              // wird gebraucht, um fuer den Sync einen zweiten
+                              // Schluessel mit anderem Salt abzuleiten
   var hiddenSince = null;
   var writeChain = Promise.resolve();
 
@@ -84,7 +87,7 @@
     localStorage.setItem(ENC_KEY, JSON.stringify(box));
     localStorage.setItem(LOCK_KEY, JSON.stringify({ salt: salt, iterations: ITERATIONS, check: check }));
     localStorage.removeItem(PLAIN_KEY);
-    memKey = key;
+    memKey = key; memCode = code;
     return true;
   }
 
@@ -97,7 +100,7 @@
     } catch (e) {
       throw new Error('Falscher Code.');
     }
-    memKey = key;
+    memKey = key; memCode = code;
     return true;
   }
 
@@ -107,7 +110,7 @@
     localStorage.setItem(PLAIN_KEY, JSON.stringify(entries));
     localStorage.removeItem(ENC_KEY);
     localStorage.removeItem(LOCK_KEY);
-    memKey = null;
+    memKey = null; memCode = null;
     return entries;
   }
 
@@ -129,7 +132,7 @@
     return writeChain;
   }
 
-  function lockNow() { memKey = null; }
+  function lockNow() { memKey = null; memCode = null; }
 
   // Automatisch sperren, wenn die App laenger im Hintergrund lag
   document.addEventListener('visibilitychange', function () {
@@ -141,6 +144,15 @@
     }
   });
 
+  /* Fuer den Sync: derselbe Code, aber ein eigener Schluessel mit dem Salt,
+     das in der Cloud liegt. So leiten alle Geraete denselben Sync-Schluessel
+     ab, ohne dass der lokale Schluessel das Geraet verlaesst. */
+  async function deriveWithSalt(saltB64) {
+    if (!memCode) throw new Error('Noch gesperrt.');
+    return deriveKey(memCode, saltB64, ITERATIONS);
+  }
+  function newSalt() { return toB64(crypto.getRandomValues(new Uint8Array(16))); }
+
   window.TagebuchLock = {
     available: available,
     isEnabled: isEnabled,
@@ -150,6 +162,10 @@
     disable: disable,
     loadEntries: loadEntries,
     saveEntries: saveEntries,
-    lockNow: lockNow
+    lockNow: lockNow,
+    deriveWithSalt: deriveWithSalt,
+    newSalt: newSalt,
+    encryptWith: encryptJSON,
+    decryptWith: decryptJSON
   };
 })();
