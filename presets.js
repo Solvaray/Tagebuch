@@ -21,12 +21,22 @@
      (time, name, amount, unit, category, note). Nur "dauer" ergaenzt endTime.
      Dadurch bleiben alte Eintraege und der Sync unveraendert gueltig. */
   var BUILTIN = [
-    { id: 'konsum', title: 'Konsum & Medikamente',
-      hint: 'Substanz, Dosis, Uhrzeit – mit Diazepam-Äquivalent',
+    { id: 'konsum', title: 'Konsum',
+      hint: 'Substanzen und Dosis – mit Diazepam-Äquivalent',
       category: 'Konsum', fields: ['menge'], unit: 'mg',
-      units: ['mg', 'g', 'ml', 'Stück', 'Tropfen'],
-      names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Alkohol', 'Nikotin',
-              'Ibuprofen', 'Paracetamol'] },
+      units: ['mg', 'g', 'ml', 'Stück'],
+      names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Bromazepam',
+              'Oxazepam', 'Temazepam', 'Lormetazepam', 'Nitrazepam', 'Flunitrazepam',
+              'Midazolam', 'Clobazam', 'Chlordiazepoxid', 'Triazolam', 'Etizolam',
+              'Zopiclon', 'Zolpidem',
+              'Alkohol', 'Codein', 'Nikotin', 'Cannabis', 'Ketamin'] },
+
+    { id: 'medis', title: 'Medikamente',
+      hint: 'Verordnetes und Rezeptfreies, ohne Konsumbezug',
+      category: 'Medikament', fields: ['menge'], unit: 'mg',
+      units: ['mg', 'Stück', 'Tropfen', 'ml', 'µg'],
+      names: ['Ibuprofen', 'Paracetamol', 'Novaminsulfon', 'Pantoprazol',
+              'Vitamin D', 'Antibiotikum', 'Blutdrucktablette'] },
 
     { id: 'stimmung', title: 'Stimmung', hint: 'Von 1 bis 10, dazu eine Notiz',
       category: 'Stimmung', fields: ['skala'], scaleLabel: 'Wie stark?',
@@ -62,10 +72,28 @@
                    unit: '', units: ['mg', 'g', 'ml', 'Stück', '€'], names: [] };
 
   // ---------- Speicherung ----------
+  /* Gespeichert werden nur die IDs (und eigene Themen komplett). Die
+     Definition kommt immer aus dem Code - sonst behalten Leute, die frueher
+     gewaehlt haben, fuer immer die alten Feldlisten und Vorschlaege. */
+  function resolve(raw) {
+    var out = [];
+    (raw || []).forEach(function (item) {
+      var id = typeof item === 'string' ? item : item && item.id;
+      if (!id) return;
+      var b = BUILTIN.filter(function (t) { return t.id === id; })[0];
+      if (b) { if (out.indexOf(b) === -1) out.push(b); }
+      else if (typeof item === 'object' && item.custom) {
+        if (!item.fields) item.fields = ['menge'];
+        out.push(item);
+      }
+    });
+    return out;
+  }
+
   function load() {
     var raw = null;
     try { raw = JSON.parse(localStorage.getItem(TOPICS_KEY) || 'null'); } catch (e) { raw = null; }
-    if (Array.isArray(raw)) return raw;
+    if (Array.isArray(raw)) return resolve(raw);
 
     // Aus der alten Einzelauswahl uebernehmen, damit niemand neu waehlen muss
     var old = localStorage.getItem(LEGACY_KEY);
@@ -76,7 +104,8 @@
     return [];
   }
   function save(list) {
-    try { localStorage.setItem(TOPICS_KEY, JSON.stringify(list)); } catch (e) {}
+    var slim = list.map(function (t) { return t.custom ? t : t.id; });
+    try { localStorage.setItem(TOPICS_KEY, JSON.stringify(slim)); } catch (e) {}
     localStorage.removeItem(LEGACY_KEY);
   }
   function chosen() { return load(); }
@@ -186,18 +215,28 @@
       '<div class="topic-grid">' + cards + '</div>' +
       '<div class="own-box">' +
         '<div class="own-row">' +
-          '<input type="text" id="ownName" placeholder="Eigenes Thema, z.B. Wasser">' +
-          '<input type="text" id="ownUnit" placeholder="Einheit" class="own-unit">' +
-          '<button class="own-add" id="ownAdd" type="button">+</button>' +
+          '<input type="text" class="own-name" placeholder="Eigenes Thema, z.B. Wasser">' +
+          '<input type="text" class="own-unit" placeholder="Einheit">' +
+          '<button class="own-add" type="button">+</button>' +
         '</div>' +
         (customList ? '<div class="own-list">' + customList + '</div>' : '') +
       '</div>' +
-      (opts.cta ? '<button class="topics-go" id="topicsGo">' + esc(opts.cta) + '</button>' : '') +
+      (opts.cta ? '<button class="topics-go" type="button">' + esc(opts.cta) + '</button>' : '') +
     '</div>';
   }
 
   /* Ereignisse an einen Container haengen. onChange wird nach jeder Aenderung
      gerufen, damit der Aufrufer neu zeichnen kann. */
+  /* Wer den Namen eintippt und direkt auf den Abschluss-Knopf geht, hat ihn
+     sonst umsonst getippt. Das ist eine Falle, kein Bedienfehler - also
+     uebernehmen wir ihn an dieser Stelle automatisch. */
+  function commitPending(root) {
+    var n = root.querySelector('.own-name');
+    var u = root.querySelector('.own-unit');
+    if (n && n.value.trim()) { addCustom(n.value, u ? u.value : ''); return true; }
+    return false;
+  }
+
   function bindPicker(root, onChange, onDone) {
     root.querySelectorAll('[data-topic]').forEach(function (el) {
       el.addEventListener('click', function () { toggle(el.dataset.topic); onChange(); });
@@ -205,21 +244,22 @@
     root.querySelectorAll('[data-remove]').forEach(function (el) {
       el.addEventListener('click', function () { removeTopic(el.dataset.remove); onChange(); });
     });
-    var add = root.querySelector('#ownAdd');
+    var add = root.querySelector('.own-add');
     if (add) {
       var run = function () {
-        var n = root.querySelector('#ownName');
-        var u = root.querySelector('#ownUnit');
+        var n = root.querySelector('.own-name');
+        var u = root.querySelector('.own-unit');
         if (!n.value.trim()) { n.focus(); return; }
         addCustom(n.value, u.value);
         onChange();
       };
       add.addEventListener('click', run);
-      root.querySelector('#ownName').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
-      root.querySelector('#ownUnit').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+      ['.own-name', '.own-unit'].forEach(function (sel) {
+        root.querySelector(sel).addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+      });
     }
-    var go = root.querySelector('#topicsGo');
-    if (go && onDone) go.addEventListener('click', onDone);
+    var go = root.querySelector('.topics-go');
+    if (go && onDone) go.addEventListener('click', function () { commitPending(root); onDone(); });
   }
 
   function welcomeHTML() {
@@ -273,6 +313,7 @@
     addCustom: addCustom, removeTopic: removeTopic,
     applySuggestions: applySuggestions, defaultCategory: defaultCategory,
     byCategory: byCategory, fallback: fallback, all: BUILTIN,
-    pickerHTML: pickerHTML, welcomeHTML: welcomeHTML, bindPicker: bindPicker
+    pickerHTML: pickerHTML, welcomeHTML: welcomeHTML, bindPicker: bindPicker,
+    commitPending: commitPending
   };
 })();

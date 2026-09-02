@@ -213,6 +213,19 @@
   .lock-box .btn{width:100%;}
   .lock-error{color:var(--danger); font-size:13px; min-height:20px; margin-top:12px;}
 
+  .updatebar{
+    position:fixed; left:12px; right:12px; bottom:calc(88px + env(safe-area-inset-bottom));
+    max-width:536px; margin:0 auto; z-index:30;
+    background:var(--surface-2); border:1px solid var(--accent); border-radius:12px;
+    padding:11px 12px 11px 15px; display:none; align-items:center; justify-content:space-between;
+    gap:10px; font-size:13.5px; box-shadow:0 8px 24px rgba(0,0,0,.45);
+  }
+  .updatebar.open{display:flex;}
+  .updatebar button{
+    background:var(--accent); color:#0f1210; border:none; border-radius:8px;
+    padding:8px 13px; font-family:inherit; font-weight:600; font-size:13px; cursor:pointer;
+  }
+
   /* Schnellauswahl: ein Eintrag soll drei Tipper sein, nicht drei Tippfelder */
   .quickrow{display:flex; flex-wrap:wrap; gap:6px; margin-top:8px;}
   .quickrow:empty{display:none;}
@@ -267,6 +280,11 @@
   <main id="list"></main>
 
   <button class="fab" id="addBtn">+ Eintrag</button>
+</div>
+
+<div class="updatebar" id="updateBar">
+  <span>Neue Version geladen</span>
+  <button id="updateReload">Jetzt anwenden</button>
 </div>
 
 <div class="lockscreen" id="lockScreen">
@@ -444,7 +462,7 @@
   <div class="hint">
     Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
     Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
-    <br><br>Version v14 – Themen bestimmen die Felder, Schnellauswahl beim Eintragen.
+    <br><br>Version v15 – schneller Start, Konsum und Medikamente getrennt, Themen überall wählbar.
   </div>
 </div>
 
@@ -779,7 +797,10 @@
 
   function drawTopicChips(activeCat){
     const P = window.TagebuchPresets;
-    const list = P ? P.chosen() : [];
+    // Ohne eigene Auswahl alle Themen anbieten - sonst steht im Formular nur
+    // "Sonstiges" und man kommt nie an Konsum, Stimmung und den Rest heran
+    let list = P ? P.chosen() : [];
+    if(P && !list.length) list = P.all || [];
     const box = document.getElementById('topicChips');
     const opts = list.concat([{ id:'', title:'Sonstiges', category:'Sonstiges' }]);
     box.innerHTML = opts.map(t=>
@@ -885,7 +906,7 @@
   document.getElementById('searchInput').addEventListener('input', renderList);
 
   // ---------- menu: export / import ----------
-  document.getElementById('menuBtn').addEventListener('click', ()=> openOverlay(menuSheet));
+  document.getElementById('menuBtn').addEventListener('click', ()=>{ refreshTopicsLabel(); openOverlay(menuSheet); });
 
   const dayStartSel = document.getElementById('dayStartSel');
   if(window.TagebuchStats && window.TagebuchStats.getDayStart){
@@ -942,9 +963,19 @@
     P.bindPicker(topicsPanel, drawTopics, ()=>{
       topicsPanel.style.display = 'none';
       topicsBtn.style.display = '';
+      refreshTopicsLabel();
+      refreshNameSuggestions();
+      renderChips(); renderList();
       closeSheets();
     });
+
     refreshNameSuggestions();
+  }
+
+  function refreshTopicsLabel(){
+    const P = window.TagebuchPresets;
+    const n = P ? P.chosen().length : 0;
+    topicsBtn.textContent = n ? ('◎ Themen ändern (' + n + ')') : '◎ Themen wählen';
   }
 
   topicsBtn.addEventListener('click', ()=>{
@@ -1200,6 +1231,16 @@
     window.addEventListener('load', () => {
       navigator.serviceWorker.register('sw.js').catch(() => {});
     });
+    // Der Service Worker meldet sich, wenn eine neue Fassung aktiv geworden ist.
+    // Erst beim nächsten Laden greift sie – deshalb der Hinweis statt stiller Wechsel.
+    let announced = false;
+    navigator.serviceWorker.addEventListener('message', (ev) => {
+      if(ev.data && ev.data.type === 'tagebuch-updated' && !announced){
+        announced = true;
+        document.getElementById('updateBar').classList.add('open');
+      }
+    });
+    document.getElementById('updateReload').addEventListener('click', ()=> location.reload());
   }
 })();
 </script>
