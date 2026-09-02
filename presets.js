@@ -1,65 +1,92 @@
-/* Tagebuch – Vorlagen für den leeren Zustand.
+/* Tagebuch – Themen.
 
-   Ein Tagebuch ist erstmal nur "Zeitpunkt, Bezeichnung, Menge, Notiz".
-   Was daraus wird, entscheidet der Nutzer. Die Vorlagen aendern nur die
-   Vorschlaege in den Eingabefeldern - nie die Daten selbst, und man kann
-   jederzeit alles frei eintippen. */
+   Ein Tagebuch ist im Kern nur "Zeitpunkt, Bezeichnung, Menge, Notiz". Themen
+   sind kein Modus und keine Identitaet der App, sondern nur Vorschlaege fuer
+   die Eingabefelder. Deshalb: mehrere gleichzeitig, jederzeit aenderbar,
+   eigene erlaubt. Die Daten selbst beruehrt das nie. */
 (function () {
   'use strict';
 
-  var PRESET_KEY = 'tagebuch_preset_v1';
+  var TOPICS_KEY = 'tagebuch_topics_v1';
+  var LEGACY_KEY = 'tagebuch_preset_v1';
 
-  var PRESETS = [
-    {
-      id: 'konsum', title: 'Konsum', hint: 'Substanz und Menge, mit Diazepam-Äquivalent',
+  var BUILTIN = [
+    { id: 'konsum', title: 'Konsum', hint: 'Substanz und Menge, mit Diazepam-Äquivalent',
       category: 'Konsum', units: ['mg', 'g', 'ml', 'Stück'],
-      names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Alkohol', 'Nikotin', 'Koffein']
-    },
-    {
-      id: 'medis', title: 'Medikamente', hint: 'Einnahme mit Uhrzeit und Dosis',
+      names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Alkohol', 'Nikotin', 'Koffein'] },
+    { id: 'medis', title: 'Medikamente', hint: 'Einnahme mit Uhrzeit und Dosis',
       category: 'Medikament', units: ['mg', 'Stück', 'Tropfen', 'ml'],
-      names: ['Ibuprofen', 'Paracetamol', 'Pantoprazol', 'Vitamin D']
-    },
-    {
-      id: 'essen', title: 'Essen', hint: 'Was, wann, wie viel',
+      names: ['Ibuprofen', 'Paracetamol', 'Pantoprazol', 'Vitamin D'] },
+    { id: 'essen', title: 'Essen', hint: 'Was, wann, wie viel',
       category: 'Essen', units: ['g', 'ml', 'Portion', 'kcal'],
-      names: ['Frühstück', 'Mittag', 'Abendessen', 'Snack', 'Kaffee', 'Wasser']
-    },
-    {
-      id: 'stimmung', title: 'Stimmung', hint: 'Von 1 bis 10, dazu eine Notiz',
+      names: ['Frühstück', 'Mittag', 'Abendessen', 'Snack', 'Kaffee', 'Wasser'] },
+    { id: 'stimmung', title: 'Stimmung', hint: 'Von 1 bis 10, dazu eine Notiz',
       category: 'Stimmung', units: ['/10'],
-      names: ['Stimmung', 'Anspannung', 'Energie', 'Schlafqualität', 'Craving']
-    },
-    {
-      id: 'training', title: 'Training', hint: 'Übung, Gewicht, Dauer',
+      names: ['Stimmung', 'Anspannung', 'Energie', 'Schlafqualität', 'Craving'] },
+    { id: 'training', title: 'Training', hint: 'Übung, Gewicht, Dauer',
       category: 'Training', units: ['kg', 'min', 'km', 'Sätze', 'Wdh.'],
-      names: ['Bankdrücken', 'Kniebeuge', 'Kreuzheben', 'Laufen', 'Radfahren']
-    },
-    {
-      id: 'traeume', title: 'Träume', hint: 'Direkt nach dem Aufwachen, ohne Mengen',
+      names: ['Bankdrücken', 'Kniebeuge', 'Kreuzheben', 'Laufen', 'Radfahren'] },
+    { id: 'traeume', title: 'Träume', hint: 'Direkt nach dem Aufwachen, ohne Mengen',
       category: 'Traum', units: [],
-      names: ['Traum', 'Albtraum', 'Klartraum']
-    },
-    {
-      id: 'schmerz', title: 'Schmerzen', hint: 'Stärke von 1 bis 10, wo und wann',
+      names: ['Traum', 'Albtraum', 'Klartraum'] },
+    { id: 'schlaf', title: 'Schlaf', hint: 'Dauer und Qualität',
+      category: 'Schlaf', units: ['Std', 'min', '/10'],
+      names: ['Schlaf', 'Nickerchen', 'Aufgewacht'] },
+    { id: 'schmerz', title: 'Schmerzen', hint: 'Stärke von 1 bis 10, wo und wann',
       category: 'Schmerz', units: ['/10'],
-      names: ['Kopfschmerz', 'Rücken', 'Nacken', 'Bauch']
-    },
-    {
-      id: 'ausgaben', title: 'Ausgaben', hint: 'Wofür und wie viel',
+      names: ['Kopfschmerz', 'Rücken', 'Nacken', 'Bauch'] },
+    { id: 'ausgaben', title: 'Ausgaben', hint: 'Wofür und wie viel',
       category: 'Ausgabe', units: ['€'],
-      names: ['Einkauf', 'Essen gehen', 'Fahrtkosten', 'Abo']
-    }
+      names: ['Einkauf', 'Essen gehen', 'Fahrtkosten', 'Abo'] }
   ];
 
-  function get(id) {
-    for (var i = 0; i < PRESETS.length; i++) if (PRESETS[i].id === id) return PRESETS[i];
-    return null;
+  // ---------- Speicherung ----------
+  function load() {
+    var raw = null;
+    try { raw = JSON.parse(localStorage.getItem(TOPICS_KEY) || 'null'); } catch (e) { raw = null; }
+    if (Array.isArray(raw)) return raw;
+
+    // Aus der alten Einzelauswahl uebernehmen, damit niemand neu waehlen muss
+    var old = localStorage.getItem(LEGACY_KEY);
+    if (old) {
+      var one = BUILTIN.filter(function (t) { return t.id === old; });
+      if (one.length) { save(one); return one; }
+    }
+    return [];
   }
-  function current() { return get(localStorage.getItem(PRESET_KEY)); }
-  function set(id) {
-    if (id) localStorage.setItem(PRESET_KEY, id);
-    else localStorage.removeItem(PRESET_KEY);
+  function save(list) {
+    try { localStorage.setItem(TOPICS_KEY, JSON.stringify(list)); } catch (e) {}
+    localStorage.removeItem(LEGACY_KEY);
+  }
+  function chosen() { return load(); }
+  function isChosen(id) { return load().some(function (t) { return t.id === id; }); }
+
+  function toggle(id) {
+    var list = load();
+    var idx = list.findIndex(function (t) { return t.id === id; });
+    if (idx >= 0) { list.splice(idx, 1); }
+    else {
+      var b = BUILTIN.filter(function (t) { return t.id === id; })[0];
+      if (b) list.push(b);
+    }
+    save(list);
+    return list;
+  }
+  function addCustom(title, unit) {
+    title = String(title || '').trim();
+    if (!title) return null;
+    var list = load();
+    var id = 'eigen:' + title.toLowerCase();
+    if (list.some(function (t) { return t.id === id; })) return list;
+    list.push({
+      id: id, title: title, hint: 'Eigenes Thema', category: title,
+      units: unit ? [String(unit).trim()] : [], names: [], custom: true
+    });
+    save(list);
+    return list;
+  }
+  function removeTopic(id) {
+    save(load().filter(function (t) { return t.id !== id; }));
   }
 
   function esc(s) {
@@ -68,54 +95,148 @@
     });
   }
 
-  /* Vorschlagslisten fuellen. Bereits eingetragene Bezeichnungen stehen
-     vorn - was man schon benutzt hat, ist relevanter als jede Vorlage. */
+  // ---------- Vorschlaege ----------
   function applySuggestions(usedNames) {
-    var p = current();
+    var list = load();
     var names = (usedNames || []).slice();
-    if (p) {
-      p.names.forEach(function (n) { if (names.indexOf(n) === -1) names.push(n); });
-    }
-    var nameList = document.getElementById('nameSuggestions');
-    if (nameList) {
-      nameList.innerHTML = names.map(function (n) { return '<option value="' + esc(n) + '">'; }).join('');
-    }
-    if (p) {
-      var unitList = document.getElementById('unitSuggestions');
-      if (unitList && p.units.length) {
-        unitList.innerHTML = p.units.map(function (u) { return '<option value="' + esc(u) + '">'; }).join('');
-      }
-      var catList = document.getElementById('catSuggestions');
-      if (catList) {
-        catList.innerHTML = '<option value="' + esc(p.category) + '">';
+    var units = [], cats = [];
+    list.forEach(function (t) {
+      t.names.forEach(function (n) { if (names.indexOf(n) === -1) names.push(n); });
+      t.units.forEach(function (u) { if (units.indexOf(u) === -1) units.push(u); });
+      if (cats.indexOf(t.category) === -1) cats.push(t.category);
+    });
+    function fill(id, values) {
+      var el = document.getElementById(id);
+      if (el && values.length) {
+        el.innerHTML = values.map(function (v) { return '<option value="' + esc(v) + '">'; }).join('');
       }
     }
+    fill('nameSuggestions', names);
+    fill('unitSuggestions', units);
+    fill('catSuggestions', cats);
   }
 
-  function emptyStateHTML() {
-    return '' +
-      '<div class="welcome">' +
-        '<h2>Wofür willst du es nutzen?</h2>' +
-        '<p>Ein Tagebuch ist hier nur: Zeitpunkt, Bezeichnung, Menge, Notiz. Was daraus wird, entscheidest du. ' +
-        'Such dir einen Startpunkt – die Vorlage füllt nur die Vorschläge, eintippen kannst du immer alles.</p>' +
-        '<div class="preset-grid">' +
-          PRESETS.map(function (p) {
-            return '<button class="preset" data-preset="' + p.id + '">' +
-              '<span class="preset-title">' + esc(p.title) + '</span>' +
-              '<span class="preset-hint">' + esc(p.hint) + '</span>' +
-            '</button>';
-          }).join('') +
-        '</div>' +
-        '<button class="preset-skip" data-preset="">Ohne Vorlage anfangen</button>' +
-      '</div>';
+  /* Genau eine Kategorie vorbelegen ergibt nur Sinn, wenn es auch nur ein
+     Thema gibt - sonst raet die App, und Raten nervt mehr als ein leeres Feld. */
+  function defaultCategory() {
+    var list = load();
+    return list.length === 1 ? list[0].category : '';
   }
+
+  // ---------- Auswahl-Oberflaeche ----------
+  function pickerHTML(opts) {
+    opts = opts || {};
+    var sel = load();
+    var selIds = sel.map(function (t) { return t.id; });
+    var customs = sel.filter(function (t) { return t.custom; });
+
+    var cards = BUILTIN.map(function (t) {
+      var on = selIds.indexOf(t.id) >= 0;
+      return '<button class="topic' + (on ? ' on' : '') + '" data-topic="' + t.id + '" aria-pressed="' + on + '">' +
+        '<span class="topic-mark" aria-hidden="true"></span>' +
+        '<span class="topic-title">' + esc(t.title) + '</span>' +
+        '<span class="topic-hint">' + esc(t.hint) + '</span>' +
+      '</button>';
+    }).join('');
+
+    var customList = customs.map(function (t) {
+      return '<span class="own"><b>' + esc(t.title) + '</b>' +
+        (t.units[0] ? '<i>' + esc(t.units[0]) + '</i>' : '') +
+        '<button class="own-x" data-remove="' + esc(t.id) + '" aria-label="Entfernen">×</button></span>';
+    }).join('');
+
+    return '<div class="topics">' +
+      (opts.heading ? '<h2>' + esc(opts.heading) + '</h2>' : '') +
+      (opts.intro ? '<p class="topics-intro">' + opts.intro + '</p>' : '') +
+      '<div class="topic-grid">' + cards + '</div>' +
+      '<div class="own-box">' +
+        '<div class="own-row">' +
+          '<input type="text" id="ownName" placeholder="Eigenes Thema, z.B. Wasser">' +
+          '<input type="text" id="ownUnit" placeholder="Einheit" class="own-unit">' +
+          '<button class="own-add" id="ownAdd" type="button">+</button>' +
+        '</div>' +
+        (customList ? '<div class="own-list">' + customList + '</div>' : '') +
+      '</div>' +
+      (opts.cta ? '<button class="topics-go" id="topicsGo">' + esc(opts.cta) + '</button>' : '') +
+    '</div>';
+  }
+
+  /* Ereignisse an einen Container haengen. onChange wird nach jeder Aenderung
+     gerufen, damit der Aufrufer neu zeichnen kann. */
+  function bindPicker(root, onChange, onDone) {
+    root.querySelectorAll('[data-topic]').forEach(function (el) {
+      el.addEventListener('click', function () { toggle(el.dataset.topic); onChange(); });
+    });
+    root.querySelectorAll('[data-remove]').forEach(function (el) {
+      el.addEventListener('click', function () { removeTopic(el.dataset.remove); onChange(); });
+    });
+    var add = root.querySelector('#ownAdd');
+    if (add) {
+      var run = function () {
+        var n = root.querySelector('#ownName');
+        var u = root.querySelector('#ownUnit');
+        if (!n.value.trim()) { n.focus(); return; }
+        addCustom(n.value, u.value);
+        onChange();
+      };
+      add.addEventListener('click', run);
+      root.querySelector('#ownName').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+      root.querySelector('#ownUnit').addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+    }
+    var go = root.querySelector('#topicsGo');
+    if (go && onDone) go.addEventListener('click', onDone);
+  }
+
+  function welcomeHTML() {
+    return pickerHTML({
+      heading: 'Was möchtest du festhalten?',
+      intro: 'Ein Eintrag ist hier nur: Zeitpunkt, Bezeichnung, Menge, Notiz. Wähl aus, was zu dir passt – <strong>mehreres geht</strong>, und ändern kannst du es später jederzeit unter ⋯. Themen füllen nur die Vorschläge, eintippen kannst du immer alles.',
+      cta: 'Los geht’s'
+    });
+  }
+
+  // ---------- Styles ----------
+  var style = document.createElement('style');
+  style.textContent =
+    '.topics{padding:22px 2px 8px}' +
+    '.topics h2{font-size:19px;margin:0 0 8px;font-weight:700}' +
+    '.topics-intro{font-size:13.5px;color:var(--text-dim);line-height:1.55;margin:0 0 18px}' +
+    '.topic-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}' +
+    '.topic{position:relative;text-align:left;background:var(--surface);border:1px solid var(--border);' +
+      'color:var(--text);border-radius:13px;padding:13px 34px 14px 13px;cursor:pointer;font-family:inherit;' +
+      'display:flex;flex-direction:column;gap:4px;min-height:78px}' +
+    '.topic:active{background:var(--surface-2)}' +
+    '.topic.on{border-color:var(--accent);background:var(--accent-dim)}' +
+    '.topic-title{font-size:14.5px;font-weight:600}' +
+    '.topic-hint{font-size:11.5px;color:var(--text-dim);line-height:1.4}' +
+    '.topic-mark{position:absolute;top:12px;right:12px;width:17px;height:17px;border-radius:50%;' +
+      'border:1.5px solid var(--border)}' +
+    '.topic.on .topic-mark{border-color:var(--accent);background:var(--accent);}' +
+    '.topic.on .topic-mark::after{content:"";position:absolute;left:5px;top:2px;width:4px;height:9px;' +
+      'border:solid #14161a;border-width:0 2px 2px 0;transform:rotate(45deg)}' +
+    '.own-box{margin-top:14px}' +
+    '.own-row{display:flex;gap:7px}' +
+    '.own-row input{flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--border);' +
+      'color:var(--text);border-radius:10px;padding:11px 12px;font-family:inherit;font-size:14px;outline:none}' +
+    '.own-row input:focus{border-color:var(--accent)}' +
+    '.own-row .own-unit{flex:0 0 88px}' +
+    '.own-add{flex:0 0 44px;background:var(--surface-2);border:1px solid var(--border);color:var(--text);' +
+      'border-radius:10px;font-size:20px;cursor:pointer;font-family:inherit}' +
+    '.own-add:active{background:var(--border)}' +
+    '.own-list{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}' +
+    '.own{display:inline-flex;align-items:center;gap:7px;background:var(--accent-dim);' +
+      'border:1px solid var(--accent);border-radius:999px;padding:5px 6px 5px 12px;font-size:13px;color:var(--accent)}' +
+    '.own i{font-style:normal;font-family:"JetBrains Mono",monospace;font-size:11px;opacity:.75}' +
+    '.own-x{background:none;border:none;color:var(--accent);font-size:16px;line-height:1;cursor:pointer;padding:0 4px}' +
+    '.topics-go{width:100%;margin-top:18px;background:var(--accent);color:#0f1210;border:none;border-radius:10px;' +
+      'padding:13px;font-family:inherit;font-weight:600;font-size:15px;cursor:pointer}' +
+    '.topics-go:active{transform:translateY(1px)}';
+  document.head.appendChild(style);
 
   window.TagebuchPresets = {
-    list: PRESETS,
-    get: get,
-    current: current,
-    set: set,
-    applySuggestions: applySuggestions,
-    emptyStateHTML: emptyStateHTML
+    chosen: chosen, isChosen: isChosen, toggle: toggle,
+    addCustom: addCustom, removeTopic: removeTopic,
+    applySuggestions: applySuggestions, defaultCategory: defaultCategory,
+    pickerHTML: pickerHTML, welcomeHTML: welcomeHTML, bindPicker: bindPicker
   };
 })();
