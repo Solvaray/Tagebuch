@@ -1,16 +1,16 @@
-/* Werte aus der Firebase-Konsole: Projekt-Uebersicht -> Web-App -> Konfiguration.
-   Diese Werte sind nicht geheim. Der Schutz kommt aus firestore.rules und
-   daraus, dass die Eintraege das Geraet nur verschluesselt verlassen.
+/* Werte aus der Firebase-Konsole: Projekteinstellungen -> Meine Apps -> Konfiguration.
+   Diese Werte sind nicht geheim. Der Schutz kommt aus firestore.rules und daraus,
+   dass die Eintraege das Geraet nur verschluesselt verlassen.
 
-   Solange hier Platzhalter stehen, bleibt die Sync-Funktion in der App
-   ausgeblendet - die App laeuft dann wie bisher rein lokal weiter. */
+   measurementId (Analytics) ist bewusst nicht uebernommen - die App laedt kein
+   Analytics-SDK und schickt entsprechend auch nichts dorthin. */
 export const FIREBASE_CONFIG = {
-  apiKey: "HIER_EINTRAGEN",
-  authDomain: "HIER_EINTRAGEN",
-  projectId: "HIER_EINTRAGEN",
-  storageBucket: "HIER_EINTRAGEN",
-  messagingSenderId: "HIER_EINTRAGEN",
-  appId: "HIER_EINTRAGEN"
+  apiKey: "AIzaSyArH-FzcI6fEgSh9sEi-oIUT5VEnkHKaX8",
+  authDomain: "tagebuch-feacd.firebaseapp.com",
+  projectId: "tagebuch-feacd",
+  storageBucket: "tagebuch-feacd.firebasestorage.app",
+  messagingSenderId: "685147713781",
+  appId: "1:685147713781:web:6423e6c237c746f07f15bc"
 };
 
 export function configured() {
