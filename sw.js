@@ -1,10 +1,19 @@
-const CACHE = 'tagebuch-v19';
+const CACHE = 'tagebuch-v20';
 const ASSETS = ['./', './index.html', './stats.js', './lock.js', './presets.js',
                 './sync.js', './firebase-config.js', './manifest.json',
                 './icon-192.png', './icon-512.png', './icon-180.png'];
 
+/* {cache:'reload'} ist hier nicht optional.
+
+   Ohne das holt addAll die Dateien aus dem HTTP-Cache des Browsers. GitHub
+   Pages setzt darauf ein max-age von zehn Minuten - der frisch installierte
+   Service Worker legt sich also alte Dateien in einen neuen Cache und
+   liefert sie fuer immer aus. Praktisch heisst das: neues index.html,
+   altes presets.js, und die App sieht halb aktualisiert aus. */
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));
+  e.waitUntil(caches.open(CACHE).then((c) =>
+    c.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' })))
+  ));
   self.skipWaiting();
 });
 
@@ -33,7 +42,12 @@ self.addEventListener('fetch', (e) => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(e.request, { ignoreSearch: true });
 
-    const fromNetwork = fetch(e.request).then((res) => {
+    // Auch beim Nachladen am HTTP-Cache vorbei - sonst derselbe Fehler
+    const fresh = (() => {
+      try { return fetch(e.request, { cache: 'no-cache' }); }
+      catch (err) { return fetch(e.request); }
+    })();
+    const fromNetwork = fresh.then((res) => {
       if (res && res.ok) cache.put(e.request, res.clone());
       return res;
     }).catch(() => null);
