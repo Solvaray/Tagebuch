@@ -1,4 +1,4 @@
-const CACHE = 'tagebuch-v10';
+const CACHE = 'tagebuch-v11';
 const ASSETS = ['./', './index.html', './stats.js', './lock.js', './presets.js', './manifest.json', './icon-192.png', './icon-512.png', './icon-180.png'];
 
 self.addEventListener('install', (e) => {

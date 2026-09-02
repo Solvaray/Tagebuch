@@ -248,41 +248,73 @@
     });
   }
 
-  function barChart(series, avg, unitLabel) {
-    var W = 560, H = 250, padL = 6, padR = 6, padB = 24, padT = 18;
+  /* Auf glatte Werte gerundete Obergrenze, damit die Achse lesbare
+     Zahlen bekommt statt "36,5". */
+  function niceCeil(v) {
+    if (!(v > 0)) return 1;
+    var exp = Math.floor(Math.log(v) / Math.LN10);
+    var base = Math.pow(10, exp);
+    var f = v / base;
+    var n = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+    return n * base;
+  }
+
+  function barChart(series, avg, unitLabel, showAvg) {
+    var W = 560, H = 250, padL = 40, padR = 10, padB = 24, padT = 20;
     var n = series.values.length;
-    var max = Math.max.apply(null, series.values.concat([1]));
+    var peak = Math.max.apply(null, series.values.concat([0]));
+    var max = niceCeil(peak);
     var innerW = W - padL - padR, innerH = H - padT - padB;
     var slot = innerW / n;
-    var bw = Math.max(1.5, Math.min(slot - (n > 45 ? 1 : 2), 26));
-    var bars = '', ticks = '';
+    var bw = Math.max(2, Math.min(slot - (n > 45 ? 1 : 4), 34));
+    var baseY = padT + innerH;
+    var labelBars = n <= 14;
+
+    // Gitterlinien mit beschrifteter Achse
+    var grid = '';
+    [0, 0.5, 1].forEach(function (f) {
+      var y = baseY - innerH * f;
+      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
+        '" stroke="var(--border)" stroke-width="1" opacity="' + (f === 0 ? 1 : 0.45) + '"></line>' +
+        '<text x="' + (padL - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="10"' +
+        ' fill="var(--text-dim)" font-family="JetBrains Mono, monospace">' + esc(num(max * f)) + '</text>';
+    });
+
+    var bars = '', ticks = '', values = '';
     var every = n <= 10 ? 1 : Math.ceil(n / 7);
 
     series.values.forEach(function (v, i) {
-      var h = max ? (v / max) * innerH : 0;
+      var h = (v / max) * innerH;
       var x = padL + slot * i + (slot - bw) / 2;
-      var y = padT + innerH - h;
+      var y = baseY - h;
       if (v > 0) {
         bars += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) +
-          '" height="' + Math.max(h, 2).toFixed(1) + '" rx="' + Math.min(3, bw / 2).toFixed(1) + '" fill="url(#barGrad)"></rect>';
-      } else {
-        bars += '<rect x="' + x.toFixed(1) + '" y="' + (padT + innerH - 2) + '" width="' + bw.toFixed(1) +
-          '" height="2" rx="1" fill="var(--border)"></rect>';
+          '" height="' + Math.max(h, 2).toFixed(1) + '" rx="' + Math.min(3, bw / 2).toFixed(1) +
+          '" fill="url(#barGrad)"></rect>';
+        if (labelBars) {
+          values += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (y - 6).toFixed(1) +
+            '" text-anchor="middle" font-size="10.5" fill="var(--text)"' +
+            ' font-family="JetBrains Mono, monospace">' + esc(num(v)) + '</text>';
+        }
       }
       if (i % every === 0 || i === n - 1) {
         ticks += '<text x="' + (padL + slot * i + slot / 2).toFixed(1) + '" y="' + (H - 6) +
-          '" text-anchor="middle" font-size="10" fill="var(--text-dim)" font-family="JetBrains Mono, monospace">' + series.labels[i] + '</text>';
+          '" text-anchor="middle" font-size="10" fill="var(--text-dim)"' +
+          ' font-family="JetBrains Mono, monospace">' + series.labels[i] + '</text>';
       }
     });
 
-    var pts = avg.map(function (v, i) {
-      var x = padL + slot * i + slot / 2;
-      var y = padT + innerH - (max ? (v / max) * innerH : 0);
-      return x.toFixed(1) + ',' + y.toFixed(1);
-    }).join(' ');
-
-    var baseY = padT + innerH;
-    var areaPts = pts + ' ' + (W - padR - (slot - bw) / 2).toFixed(1) + ',' + baseY + ' ' + (padL + (slot - bw) / 2).toFixed(1) + ',' + baseY;
+    var trend = '';
+    if (showAvg) {
+      var pts = avg.map(function (v, i) {
+        return (padL + slot * i + slot / 2).toFixed(1) + ',' + (baseY - (v / max) * innerH).toFixed(1);
+      }).join(' ');
+      var areaPts = pts + ' ' + (padL + slot * (n - 1) + slot / 2).toFixed(1) + ',' + baseY +
+        ' ' + (padL + slot / 2).toFixed(1) + ',' + baseY;
+      trend = '<polygon points="' + areaPts + '" fill="url(#areaGrad)"></polygon>' +
+        '<polyline points="' + pts + '" fill="none" stroke="#d9b26a" stroke-width="2"' +
+        ' stroke-linejoin="round" stroke-linecap="round"></polyline>';
+    }
 
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="Tagesverlauf">' +
       '<defs>' +
@@ -295,12 +327,9 @@
           '<stop offset="100%" stop-color="#d9b26a" stop-opacity="0"></stop>' +
         '</linearGradient>' +
       '</defs>' +
-      '<line x1="' + padL + '" y1="' + baseY + '" x2="' + (W - padR) + '" y2="' + baseY + '" stroke="var(--border)" stroke-width="1"></line>' +
-      '<polygon points="' + areaPts + '" fill="url(#areaGrad)"></polygon>' +
-      bars +
-      '<polyline points="' + pts + '" fill="none" stroke="#d9b26a" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>' +
-      ticks +
-      '<text x="' + padL + '" y="10" font-size="10" fill="var(--text-dim)" font-family="JetBrains Mono, monospace">max ' + esc(num(max)) + (unitLabel ? ' ' + esc(unitLabel) : '') + '</text>' +
+      grid + trend + bars + values + ticks +
+      (unitLabel ? '<text x="' + padL + '" y="11" font-size="10" fill="var(--text-dim)"' +
+        ' font-family="JetBrains Mono, monospace">' + esc(unitLabel) + '</text>' : '') +
       '</svg>';
   }
 
@@ -419,6 +448,8 @@
       hours[Math.floor(d.getHours() / 2)] += valueOf(e);
     });
 
+    var showAvg = series.values.length >= 3;
+
     var body = sheet.querySelector('#statsBody');
     if (!all.length) {
       body.innerHTML = '<div class="stats-empty">Noch keine Einträge – sobald du welche anlegst, entstehen hier automatisch die Diagramme.</div>';
@@ -427,8 +458,9 @@
 
     body.innerHTML =
       '<div class="chart-card">' +
-        section('Tagesverlauf', '<span class="legend"><i class="l-bar"></i>' + metricWord + ' <i class="l-line"></i>7-Tage-Schnitt</span>') +
-        barChart(series, avg, unitLabel) +
+        section('Tagesverlauf', '<span class="legend"><i class="l-bar"></i>' + metricWord +
+          (showAvg ? ' <i class="l-line"></i>7-Tage-Schnitt' : '') + '</span>') +
+        barChart(series, avg, unitLabel, showAvg) +
       '</div>' +
       '<div class="stats-cards">' + cards + '</div>' +
       (useEq ? (function () {

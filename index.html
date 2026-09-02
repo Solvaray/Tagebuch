@@ -171,10 +171,14 @@
     background:var(--surface); border-radius:20px 20px 0 0; border:1px solid var(--border); border-bottom:none;
     padding:8px 20px calc(24px + env(safe-area-inset-bottom));
     transform:translateY(100%); transition:transform .25s cubic-bezier(.32,.72,0,1);
-    max-height:88vh; overflow-y:auto;
+    max-height:88vh; overflow-y:auto; overscroll-behavior:contain;
   }
   .sheet.open{transform:translateY(0);}
-  .sheet-handle{width:36px; height:4px; background:var(--border); border-radius:2px; margin:8px auto 16px;}
+  .sheet-handle{
+    width:40px; height:4px; background:var(--border); border-radius:2px; margin:8px auto 16px;
+    position:relative;
+  }
+  .sheet-handle::after{content:''; position:absolute; inset:-12px -40px;}
   .sheet h2{font-size:17px; margin:0 0 16px;}
   .field{margin-bottom:14px;}
   .field label{display:block; font-size:12px; color:var(--text-dim); margin-bottom:6px; text-transform:uppercase; letter-spacing:.05em;}
@@ -386,7 +390,7 @@
   <div class="hint">
     Alle Daten liegen nur in diesem Browser (localStorage) – es gibt keinen Server, nichts wird hochgeladen.
     Das heißt aber auch: Cache löschen = Daten weg. Regelmäßig JSON exportieren als Backup.
-    <br><br>Version v10 – Startbildschirm mit Vorlagen, App-Sperre, Zurücksetzen.
+    <br><br>Version v11 – Sheets per Wischen schließbar, Startbildschirm, App-Sperre.
   </div>
 </div>
 
@@ -584,6 +588,49 @@
     menuSheet.classList.remove('open');
   }
   overlay.addEventListener('click', closeSheets);
+
+  /* Nach unten wischen schließt das Sheet. Greift nur, wenn der Inhalt schon
+     ganz oben steht – sonst könnte man beim Hochscrollen versehentlich
+     zumachen. Gilt auch für die Statistik, die ihr Sheet selbst erzeugt. */
+  (function enableSheetSwipe(){
+    let sheet = null, startY = 0, lastY = 0, dragging = false;
+
+    function closeAll(){
+      document.querySelectorAll('.sheet.open').forEach(el => el.classList.remove('open'));
+      overlay.classList.remove('open');
+    }
+
+    document.addEventListener('touchstart', (e)=>{
+      const el = e.target.closest && e.target.closest('.sheet.open');
+      if(!el || el.scrollTop > 0) { sheet = null; return; }
+      sheet = el; startY = lastY = e.touches[0].clientY; dragging = false;
+    }, {passive:true});
+
+    document.addEventListener('touchmove', (e)=>{
+      if(!sheet) return;
+      lastY = e.touches[0].clientY;
+      const dy = lastY - startY;
+      if(dy <= 4 || sheet.scrollTop > 0){
+        if(dragging){ dragging = false; sheet.style.transition=''; sheet.style.transform=''; }
+        return;
+      }
+      dragging = true;
+      e.preventDefault();                     // eigenes Überscrollen unterbinden
+      sheet.style.transition = 'none';
+      sheet.style.transform = 'translateY(' + dy + 'px)';
+    }, {passive:false});
+
+    function end(){
+      if(!sheet) return;
+      const dy = lastY - startY;
+      sheet.style.transition = '';
+      sheet.style.transform = '';
+      if(dragging && dy > 90) closeAll();
+      sheet = null; dragging = false;
+    }
+    document.addEventListener('touchend', end);
+    document.addEventListener('touchcancel', end);
+  })();
 
   function openForm(id){
     editingId = id || null;
