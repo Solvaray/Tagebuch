@@ -262,7 +262,8 @@
     var exp = Math.floor(Math.log(v) / Math.LN10);
     var base = Math.pow(10, exp);
     var f = v / base;
-    var n = f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10;
+    var n = f <= 1 ? 1 : f <= 1.2 ? 1.2 : f <= 1.5 ? 1.5 : f <= 2 ? 2 : f <= 2.5 ? 2.5
+          : f <= 3 ? 3 : f <= 4 ? 4 : f <= 5 ? 5 : f <= 6 ? 6 : f <= 8 ? 8 : 10;
     return n * base;
   }
 
@@ -275,7 +276,7 @@
     var max = niceCeil(peak);
     var innerW = W - padL - padR, innerH = H - padT - padB;
     var slot = innerW / n;
-    var bw = Math.max(2, Math.min(slot - (n > 45 ? 1 : 4), 34));
+    var bw = Math.max(2, Math.min(slot - (n > 45 ? 1 : 4), n <= 7 ? 48 : 34));
     var baseY = padT + innerH;
     var labelBars = n <= 14;
 
@@ -452,14 +453,14 @@
 
     var cards =
       (planOn && sollHeute !== null
-        ? card('Heute Soll / Ist', num(sollHeute) + ' <span class="unit">/ ' + num(istHeute) + ' mg DÄ</span>')
+        ? card('Soll / Ist heute', num(sollHeute) + ' <span class="unit">/ ' + num(istHeute) + '</span>')
         : '') +
-      card((useEq ? 'Diaz.-Äquiv. gesamt' : metricWord + ' gesamt'), num(series.total) + (unitLabel ? ' <span class="unit">' + esc(unitLabel) + '</span>' : '')) +
+      card((useEq ? 'Gesamt' : metricWord + ' gesamt'), num(series.total) + (unitLabel ? ' <span class="unit">' + esc(unitLabel) + '</span>' : '')) +
       card('Ø pro Tag', num(Math.round(perDay * 100) / 100) + (unitLabel ? ' <span class="unit">' + esc(unitLabel) + '</span>' : '')) +
-      card('Tage ohne Eintrag', freeDays + ' <span class="unit">von ' + trackedDays + '</span>') +
+      card('Ohne Eintrag', freeDays + ' <span class="unit">von ' + trackedDays + '</span>') +
       card('Längste Pause', longestGap + ' <span class="unit">Tage</span>') +
-      card('vs. Vorzeitraum', trend == null ? '–' : arrow + ' ' + num(Math.abs(Math.round(trend))) + ' <span class="unit">%</span>') +
-      card('Einträge', countInRange + ' <span class="unit">in ' + trackedDays + (trackedDays === 1 ? ' Tag' : ' Tagen') + '</span>');
+      card('vs. davor', trend == null ? '–' : arrow + ' ' + num(Math.abs(Math.round(trend))) + ' <span class="unit">%</span>') +
+      card('Einträge', countInRange + ' <span class="unit">in ' + trackedDays + ' T</span>');
 
     // Top-Liste nach Bezeichnung
     var byName = {};
@@ -487,7 +488,9 @@
       hours[Math.floor(d.getHours() / 2)] += valueOf(e);
     });
 
-    var showAvg = series.values.length >= 3;
+    /* Unter sieben Tagen ist ein 7-Tage-Schnitt keiner - die Linie taeuscht
+       dann eine Glaettung vor, die es nicht gibt. */
+    var showAvg = series.values.length >= 7;
 
 
     var body = sheet.querySelector('#statsBody');
@@ -588,18 +591,21 @@
       '.range-group{display:flex;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px}' +
       '.range-btn{background:transparent;border:none;color:var(--text-dim);font-family:inherit;font-size:13px;padding:6px 10px;border-radius:7px;cursor:pointer}' +
       '.range-btn.active{background:var(--accent-dim);color:var(--accent)}' +
-      '.stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(98px,1fr));gap:8px;margin-bottom:20px}' +
+      '.stats-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:20px}' +
       '.stat-card{background:linear-gradient(160deg,var(--surface-2),rgba(35,39,45,.35));border:1px solid var(--border);border-radius:12px;padding:11px 12px}' +
-      '.stat-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;line-height:1.3}' +
-      '.stat-value{font-size:17px;margin-top:5px;color:var(--text);font-weight:500}' +
-      '.stat-value .unit{font-size:11px;color:var(--text-dim)}' +
+      '.stat-label{font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.05em;' +
+        'line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}' +
+      /* Zahl und Einheit bleiben auf einer Zeile - "86,67 mg" mit "DÄ" darunter liest sich wie zwei Werte */
+      '.stat-value{font-size:19px;margin-top:5px;color:var(--text);font-weight:500;white-space:nowrap}' +
+      '.stat-value .unit{font-size:11px;color:var(--text-dim);margin-left:3px}' +
       '.stats-section{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:22px 0 8px}' +
       '.chart-card{background:linear-gradient(170deg,rgba(124,152,133,.07),rgba(27,30,35,0));border:1px solid var(--border);border-radius:16px;padding:2px 12px 10px;margin-bottom:16px}' +
       '.chart-card .stats-section{margin-top:12px}' +
       '#statsSheet{max-height:94vh}' +
       '#statsSheet h2{margin-bottom:14px}' +
       '.stats-section h3{font-size:13px;margin:0;font-weight:600;color:var(--text)}' +
-      '.legend{font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:5px}' +
+      '.legend{font-size:10px;color:var(--text-dim);display:flex;align-items:center;gap:5px;' +
+        'flex-wrap:wrap;justify-content:flex-end;row-gap:2px}' +
       '.legend i{display:inline-block;border-radius:2px}' +
       '.legend .l-bar{width:9px;height:9px;background:var(--accent);opacity:.85}' +
       '.legend .l-line{width:12px;height:2px;background:#d9b26a;margin-left:6px}' +
