@@ -25,11 +25,11 @@
       hint: 'Substanzen und Dosis – mit Diazepam-Äquivalent',
       category: 'Konsum', fields: ['menge'], unit: 'mg',
       units: ['mg', 'g', 'ml', 'Stück'],
+      /* Bewusst kurz gehalten: die sechs in Deutschland gaengigen Benzos.
+         Seltenere Stoffe koennen frei eingetippt werden, die Umrechnung in
+         stats.js kennt sie weiterhin. */
       names: ['Alprazolam', 'Clonazepam', 'Diazepam', 'Lorazepam', 'Bromazepam',
-              'Oxazepam', 'Temazepam', 'Lormetazepam', 'Nitrazepam', 'Flunitrazepam',
-              'Midazolam', 'Clobazam', 'Chlordiazepoxid', 'Triazolam', 'Etizolam',
-              'Prazepam', 'Clorazepat', 'Nordazepam', 'Medazepam', 'Brotizolam',
-              'Flurazepam', 'Phenazepam',
+              'Oxazepam',
               'Zopiclon', 'Zolpidem', 'Zaleplon',
               'Alkohol', 'Codein', 'Tilidin', 'Tramadol', 'Nikotin', 'Cannabis', 'Ketamin'] },
 
