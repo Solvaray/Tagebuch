@@ -267,6 +267,33 @@
     return n * base;
   }
 
+  /* Balken nur oben abgerundet. Ein rect mit rx rundet auch die Fusspunkte -
+     die Balken sehen dann aus, als schwebten sie ueber der Nulllinie. */
+  function barPath(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h);
+    return 'M' + x.toFixed(1) + ',' + (y + h).toFixed(1) +
+      'V' + (y + r).toFixed(1) +
+      'Q' + x.toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + r).toFixed(1) + ',' + y.toFixed(1) +
+      'H' + (x + w - r).toFixed(1) +
+      'Q' + (x + w).toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + w).toFixed(1) + ',' + (y + r).toFixed(1) +
+      'V' + (y + h).toFixed(1) + 'Z';
+  }
+
+  /* Weiche Kurve statt Zickzack (Catmull-Rom als Bezier). Der Schnitt ist
+     eine Tendenz - eckige Knicke behaupten Ereignisse, die es nicht gibt. */
+  function smoothPath(pts) {
+    if (pts.length < 2) return '';
+    if (pts.length === 2) return 'M' + pts[0].x + ',' + pts[0].y + 'L' + pts[1].x + ',' + pts[1].y;
+    var d = 'M' + pts[0].x.toFixed(1) + ',' + pts[0].y.toFixed(1);
+    for (var i = 0; i < pts.length - 1; i++) {
+      var p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+      d += 'C' + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + ',' + (p1.y + (p2.y - p0.y) / 6).toFixed(1) +
+           ' ' + (p2.x - (p3.x - p1.x) / 6).toFixed(1) + ',' + (p2.y - (p3.y - p1.y) / 6).toFixed(1) +
+           ' ' + p2.x.toFixed(1) + ',' + p2.y.toFixed(1);
+    }
+    return d;
+  }
+
   function barChart(series, avg, unitLabel, showAvg, targets) {
     var W = 560, H = 250, padL = 40, padR = 10, padB = 24, padT = 20;
     var n = series.values.length;
@@ -282,28 +309,40 @@
 
     // Gitterlinien mit beschrifteter Achse
     var grid = '';
-    [0, 0.5, 1].forEach(function (f) {
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
       var y = baseY - innerH * f;
+      var labelled = (f === 0 || f === 0.5 || f === 1);
       grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
-        '" stroke="var(--border)" stroke-width="1" opacity="' + (f === 0 ? 1 : 0.45) + '"></line>' +
-        '<text x="' + (padL - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="10"' +
-        ' fill="var(--text-dim)" font-family="JetBrains Mono, monospace">' + esc(num(max * f)) + '</text>';
+        '" stroke="var(--border)" stroke-width="1" opacity="' + (f === 0 ? 1 : (labelled ? 0.45 : 0.18)) + '"></line>' +
+        (labelled ? '<text x="' + (padL - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="10"' +
+          ' fill="var(--text-dim)" font-family="JetBrains Mono, monospace">' + esc(num(max * f)) + '</text>' : '');
     });
 
     var bars = '', ticks = '', values = '';
     var every = n <= 10 ? 1 : Math.ceil(n / 7);
 
+    /* Bei vielen Balken wird jede Zahl zu Matsch. Dann nur die zwei, die man
+       wirklich sucht: der hoechste Tag und heute. */
+    var peakIdx = series.values.indexOf(peak);
+    function labelThis(i, v) {
+      if (v <= 0) return false;
+      return labelBars || i === peakIdx || i === n - 1;
+    }
+
     series.values.forEach(function (v, i) {
       var h = (v / max) * innerH;
       var x = padL + slot * i + (slot - bw) / 2;
       var y = baseY - h;
+      var heute = (i === n - 1);
       if (v > 0) {
-        bars += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + bw.toFixed(1) +
-          '" height="' + Math.max(h, 2).toFixed(1) + '" rx="' + Math.min(3, bw / 2).toFixed(1) +
-          '" fill="url(#barGrad)"></rect>';
-        if (labelBars) {
-          values += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (y - 6).toFixed(1) +
-            '" text-anchor="middle" font-size="10.5" fill="var(--text)"' +
+        bars += '<path d="' + barPath(x, y, bw, Math.max(h, 2), Math.min(4, bw / 2)) +
+          '" fill="url(#' + (heute ? 'barGradToday' : 'barGrad') + ')"></path>';
+        if (labelThis(i, v)) {
+          /* Bei einem Balken, der fast bis oben geht, wuerde die Zahl aus dem
+             Bild ragen - dann steht sie im Balken statt darueber. */
+          var innen = (y - 6) < padT + 2;
+          values += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (innen ? (y + 12).toFixed(1) : (y - 6).toFixed(1)) +
+            '" text-anchor="middle" font-size="10.5" fill="' + (innen ? '#14161a' : 'var(--text)') + '"' +
             ' font-family="JetBrains Mono, monospace">' + esc(num(v)) + '</text>';
         }
       }
@@ -314,16 +353,23 @@
       }
     });
 
-    var trend = '';
+    /* Flaeche hinter die Balken, Linie darueber: sonst verschwindet die
+       Tendenz genau dort, wo am meisten los war. */
+    var trendArea = '', trendLine = '';
     if (showAvg) {
       var pts = avg.map(function (v, i) {
-        return (padL + slot * i + slot / 2).toFixed(1) + ',' + (baseY - (v / max) * innerH).toFixed(1);
-      }).join(' ');
-      var areaPts = pts + ' ' + (padL + slot * (n - 1) + slot / 2).toFixed(1) + ',' + baseY +
-        ' ' + (padL + slot / 2).toFixed(1) + ',' + baseY;
-      trend = '<polygon points="' + areaPts + '" fill="url(#areaGrad)"></polygon>' +
-        '<polyline points="' + pts + '" fill="none" stroke="#d9b26a" stroke-width="2"' +
-        ' stroke-linejoin="round" stroke-linecap="round"></polyline>';
+        return {
+          x: padL + slot * i + slot / 2,
+          y: Math.max(padT, Math.min(baseY, baseY - (v / max) * innerH))
+        };
+      });
+      var d = smoothPath(pts);
+      trendArea = '<path d="' + d + 'L' + pts[pts.length - 1].x.toFixed(1) + ',' + baseY +
+        'L' + pts[0].x.toFixed(1) + ',' + baseY + 'Z" fill="url(#areaGrad)"></path>';
+      trendLine = '<path d="' + d + '" fill="none" stroke="#d9b26a" stroke-width="2.2"' +
+        ' stroke-linejoin="round" stroke-linecap="round" opacity=".95"></path>' +
+        '<circle cx="' + pts[pts.length - 1].x.toFixed(1) + '" cy="' + pts[pts.length - 1].y.toFixed(1) +
+        '" r="3.2" fill="#d9b26a"></circle>';
     }
 
     /* Soll-Linie aus dem eigenen Plan. Gestrichelt und in anderer Farbe als
@@ -350,12 +396,16 @@
           '<stop offset="0%" stop-color="#8fab98" stop-opacity="1"></stop>' +
           '<stop offset="100%" stop-color="#7c9885" stop-opacity=".32"></stop>' +
         '</linearGradient>' +
+        '<linearGradient id="barGradToday" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#b9d2c0" stop-opacity="1"></stop>' +
+          '<stop offset="100%" stop-color="#8fab98" stop-opacity=".38"></stop>' +
+        '</linearGradient>' +
         '<linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">' +
           '<stop offset="0%" stop-color="#d9b26a" stop-opacity=".20"></stop>' +
           '<stop offset="100%" stop-color="#d9b26a" stop-opacity="0"></stop>' +
         '</linearGradient>' +
       '</defs>' +
-      grid + trend + bars + plan + values + ticks +
+      grid + trendArea + bars + trendLine + plan + values + ticks +
       (unitLabel ? '<text x="' + padL + '" y="11" font-size="10" fill="var(--text-dim)"' +
         ' font-family="JetBrains Mono, monospace">' + esc(unitLabel) + '</text>' : '') +
       '</svg>';
