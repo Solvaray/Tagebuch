@@ -1,5 +1,5 @@
-const CACHE = 'tagebuch-v20';
-const ASSETS = ['./', './index.html', './stats.js', './lock.js', './presets.js',
+const CACHE = 'tagebuch-v22';
+const ASSETS = ['./', './index.html', './stats.js', './lock.js', './presets.js', './wirkstoffe.js',
                 './sync.js', './firebase-config.js', './manifest.json',
                 './icon-192.png', './icon-512.png', './icon-180.png'];
 

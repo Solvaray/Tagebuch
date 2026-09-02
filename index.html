@@ -159,6 +159,21 @@
     max-height:88vh; overflow-y:auto; overscroll-behavior:contain; overscroll-behavior:contain;
   }
   .sheet.open{transform:translateY(0);}
+
+  /* Am Telefon faehrt das Blatt von unten herein - dort ist der Daumen.
+     Am Rechner ist "von unten" nur eine hohe schmale Spalte, die unten aus
+     dem Bild laeuft. Also dort ein Fenster in der Mitte. */
+  @media (min-width:640px) and (min-height:600px){
+    .sheet{
+      top:50%; bottom:auto; max-height:80vh;
+      border-radius:18px; border-bottom:1px solid var(--border);
+      padding-bottom:24px;
+      transform:translateY(-46%); opacity:0; pointer-events:none;
+      transition:transform .2s ease, opacity .2s ease;
+    }
+    .sheet.open{transform:translateY(-50%); opacity:1; pointer-events:auto;}
+    .sheet-handle{display:none;}
+  }
   .sheet-handle{
     width:40px; height:4px; background:var(--border); border-radius:2px; margin:8px auto 16px;
     position:relative;
@@ -247,6 +262,7 @@
   .chipsections{margin-top:4px;}
   .chipgroup{font-size:10.5px; letter-spacing:.09em; text-transform:uppercase;
              color:var(--text-dim); opacity:.75; margin:12px 0 -2px;}
+  .chiphint{font-size:12.5px; color:var(--text-dim); opacity:.7; margin:10px 0 2px;}
 
   input[type=range]{
     -webkit-appearance:none; appearance:none; width:100%; height:28px;
@@ -484,6 +500,7 @@
 </div>
 
 <script src="lock.js"></script>
+<script src="wirkstoffe.js"></script>
 <script src="presets.js"></script>
 <script type="module" src="sync.js"></script>
 <script src="stats.js"></script>
@@ -742,18 +759,50 @@
     return `<button type="button" class="quick">${escapeHtml(label)}${unit?`<span class="u">${escapeHtml(unit)}</span>`:''}</button>`;
   }
 
-  /* Bezeichnungen als sortierte Abschnitte: ganz oben das, was diese Person
-     tatsaechlich eintraegt, darunter der Katalog des Themas in Gruppen.
-     Nichts wird abgeschnitten - eine Grenze versteckt genau den Stoff, den
-     jemand gerade sucht. */
-  function nameSectionsFor(topic){
+  /* Vergleichsform: Kleinschreibung und Umlaute weg, damit "muskel" auch
+     "Müskel" findet und niemand an der Schreibweise scheitert. */
+  function normKey(s){
+    return String(s||'').toLowerCase()
+      .replace(/ä/g,'a').replace(/ö/g,'o').replace(/ü/g,'u').replace(/ß/g,'ss')
+      .replace(/[^a-z0-9]/g,'');
+  }
+
+  function ownNames(topic){
     const count = {};
     entries.forEach(e=>{
       if((e.category||'') === topic.category) count[e.name] = (count[e.name]||0)+1;
     });
-    const mine = Object.keys(count).sort((a,b)=>count[b]-count[a]).slice(0,8);
+    return Object.keys(count).sort((a,b)=>count[b]-count[a]);
+  }
+
+  /* Bezeichnungen als sortierte Abschnitte.
+
+     Ohne Eingabe: was diese Person tatsaechlich eintraegt, darunter der
+     Katalog des Themas - ausser das Thema sagt suggestOnType, dann bleibt
+     es leer. Medikamente sind individuell; fuenfzehn fremde Namen helfen
+     niemandem und machen das Formular nur lang.
+
+     Mit Eingabe: gesucht wird ueber alles, Anfang schlaegt Mitte. So muss
+     man nichts ausschreiben und nichts richtig schreiben. */
+  function nameSectionsFor(topic, query){
+    const mine = ownNames(topic);
+    const q = normKey(query);
+
+    if(q){
+      const pool = mine.concat((topic.names||[]).filter(n=>mine.indexOf(n)===-1));
+      const starts = [], has = [];
+      pool.forEach(n=>{
+        const k = normKey(n);
+        if(k.indexOf(q) === 0) starts.push(n);
+        else if(k.indexOf(q) > 0) has.push(n);
+      });
+      const hits = starts.concat(has);
+      return hits.length ? [{ label:'', names: hits.slice(0,12) }] : [];
+    }
+
     const out = [];
-    if(mine.length) out.push({ label:'Zuletzt', names:mine });
+    if(mine.length) out.push({ label:'Zuletzt', names: mine.slice(0,8) });
+    if(topic.suggestOnType) return out;
 
     const groups = (topic.groups && topic.groups.length)
       ? topic.groups
@@ -763,6 +812,27 @@
       if(names.length) out.push({ label: g.label || '', names });
     });
     return out;
+  }
+
+  /* Chips neu zeichnen. Laeuft bei jedem Tastendruck, deshalb nur Text
+     zusammensetzen und einmal setzen - kein Element einzeln anfassen. */
+  function drawNameChips(t){
+    const nb = document.getElementById('nameChips');
+    const q = document.getElementById('f_name').value.trim();
+    const sections = nameSectionsFor(t, q);
+    const flat = [];
+    nb.innerHTML = sections.map(sec=>{
+      const chips = sec.names.map(n=>{ flat.push(n); return chip(n); }).join('');
+      return (sec.label ? `<div class="chipgroup">${escapeHtml(sec.label)}</div>` : '')
+           + `<div class="quickrow">${chips}</div>`;
+    }).join('') || (q ? '' : `<div class="chiphint">Tipp ein paar Buchstaben – Vorschläge erscheinen dann.</div>`);
+    nb.querySelectorAll('.quick').forEach((el,i)=>{
+      el.addEventListener('click', ()=>{
+        document.getElementById('f_name').value = flat[i];
+        drawNameChips(t);
+        drawAmountChips();
+      });
+    });
   }
 
   // Mengen, die für genau diese Bezeichnung schon vorkamen
@@ -810,6 +880,13 @@
     });
   }
 
+  /* Einmal binden, nicht bei jedem Themenwechsel neu - sonst haengen
+     irgendwann zwanzig Listener am selben Feld. */
+  document.getElementById('f_name').addEventListener('input', ()=>{
+    drawNameChips(topicOf(document.getElementById('f_category').value));
+    drawAmountChips();
+  });
+
   function applyTopic(cat){
     const t = topicOf(cat);
     document.getElementById('f_category').value = t.category || cat || '';
@@ -838,21 +915,8 @@
       note.rows = 3; note.placeholder = 'Kontext, Wirkung, was auch immer…';
     }
 
-    // Bezeichnungs-Vorschläge des Themas, sortiert in Abschnitte
-    const nb = document.getElementById('nameChips');
-    const sections = nameSectionsFor(t);
-    const flat = [];
-    nb.innerHTML = sections.map(sec=>{
-      const chips = sec.names.map(n=>{ flat.push(n); return chip(n); }).join('');
-      return (sec.label ? `<div class="chipgroup">${escapeHtml(sec.label)}</div>` : '')
-           + `<div class="quickrow">${chips}</div>`;
-    }).join('');
-    nb.querySelectorAll('.quick').forEach((el,i)=>{
-      el.addEventListener('click', ()=>{
-        document.getElementById('f_name').value = flat[i];
-        drawAmountChips();
-      });
-    });
+    // Bezeichnungs-Vorschläge des Themas
+    drawNameChips(t);
     if(has('menge')) drawUnitChips(t);
     else document.getElementById('unitChips').innerHTML = '';
     drawAmountChips();

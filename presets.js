@@ -44,8 +44,16 @@
       hint: 'Verordnetes und Rezeptfreies, ohne Konsumbezug',
       category: 'Medikament', fields: ['menge'], unit: 'mg',
       units: ['mg', 'Stück', 'Tropfen', 'ml', 'µg'],
-      names: ['Ibuprofen', 'Paracetamol', 'Novaminsulfon', 'Pantoprazol',
-              'Vitamin D', 'Antibiotikum', 'Blutdrucktablette'] },
+      /* Was jemand verschrieben bekommt, ist individuell. Eine feste Liste
+         trifft fast nie zu und macht das Formular nur lang - hier also
+         nichts zeigen, bis jemand tippt. Konsum ist anders: dort ist der
+         Katalog kurz und richtig. */
+      suggestOnType: true,
+      /* Aus wirkstoffe.js, falls geladen - sonst die kurze Notfallliste.
+         So bleibt presets.js lesbar und die Liste an einer Stelle. */
+      names: (window.TagebuchWirkstoffe && window.TagebuchWirkstoffe.length)
+        ? window.TagebuchWirkstoffe
+        : ['Ibuprofen', 'Paracetamol', 'Novaminsulfon', 'Pantoprazol', 'Vitamin D'] },
 
     { id: 'stimmung', title: 'Stimmung', hint: 'Von 1 bis 10, dazu eine Notiz',
       category: 'Stimmung', fields: ['skala'], scaleLabel: 'Wie war sie?',
