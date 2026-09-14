@@ -273,14 +273,26 @@
      Dosis untereinander stehen und man den naechsten Schritt sofort sieht. */
   .plan-head{font-size:13px; color:var(--text); line-height:1.5; margin-bottom:9px;}
   .plan-head b{color:var(--accent); font-family:'JetBrains Mono',monospace; font-weight:600;}
-  table.plan-sched{width:100%; border-collapse:collapse;
-    font-family:'JetBrains Mono',monospace; font-size:12px;}
-  table.plan-sched td{padding:5px 0; border-bottom:1px solid var(--border); color:var(--text-dim);}
-  table.plan-sched td.dose{text-align:right; color:var(--text); font-size:12.5px;}
-  table.plan-sched td.unit{padding-left:4px; font-size:10.5px;}
-  table.plan-sched td.till{text-align:right; font-size:10.5px;}
-  table.plan-sched tr.now td{color:var(--accent);}
-  table.plan-sched tr:last-child td{border-bottom:none;}
+  /* Der Plan als Zeilen: eine Stufe je Zeile, der Balken darin zeigt die
+     Hoehe der Dosis. Vorher stand hier eine Tabelle UND darueber ein
+     Diagramm mit denselben Zahlen - zweimal dasselbe ist das Gegenteil
+     von uebersichtlich. */
+  .plan-zeilen{margin:2px 0 0;}
+  .pz{display:flex; align-items:center; gap:7px; padding:5px 0;
+    border-bottom:1px solid var(--border);
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--text-dim);}
+  .pz:last-child{border-bottom:none;}
+  /* nowrap ist hier nicht Kosmetik: ohne das bricht "ab 21.09" auf zwei
+     Zeilen und die Zeilen werden unterschiedlich hoch. */
+  .pz-wann{width:56px; flex:0 0 auto; white-space:nowrap;}
+  .pz-bis{width:52px; flex:0 0 auto; text-align:right; white-space:nowrap;
+    font-size:10px;}
+  .pz-bar{position:relative; flex:1 1 auto; height:20px;
+    background:rgba(127,168,201,.10); border-radius:4px; overflow:hidden;}
+  .pz-fill{position:absolute; left:0; top:0; bottom:0; background:rgba(127,168,201,.30);}
+  .pz-dose{position:absolute; left:8px; top:0; line-height:20px;
+    color:var(--text); font-size:12px;}
+  .pz.jetzt .pz-wann, .pz.jetzt .pz-dose{color:var(--accent);}
   .plan-more{font-size:11.5px; color:var(--text-dim); margin-top:7px;}
   .plan-foot{font-size:11.5px; color:var(--text-dim); line-height:1.55; margin-top:9px;}
 
@@ -1145,8 +1157,11 @@
     function fmtNum(v){
       return Number(v).toLocaleString('de-DE', {maximumFractionDigits:2});
     }
+    /* Ohne Schlusspunkt: "21.09." statt "21.09" kostet ein Zeichen, und an
+       dem Zeichen bricht die Spalte um. */
     function fmtShort(d){
-      return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'});
+      return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'})
+        .replace(/\.$/, '');
     }
 
     /* Die Vorschau schreibt nur fort, was in den Feldern steht: welcher
@@ -1183,25 +1198,32 @@
       }
 
       const von = pos.started ? Math.max(0, pos.step - 1) : 0;
-      const zeigen = sched.slice(von, von + 6);
+      const zeigen = sched.slice(von, von + 7);
+      /* Der Balken wird an der hoechsten gezeigten Stufe gemessen, nicht an
+         der Startdosis des Plans: sonst waeren bei einem weit
+         fortgeschrittenen Plan alle Balken kurze Stummel. */
+      const hoch = Math.max.apply(null, zeigen.map(s => s.dose)) || 1;
       const rows = zeigen.map((s, k) => {
         const jetzt = pos.started && (von + k) === (pos.step - 1);
-        return '<tr class="' + (jetzt ? 'now' : '') + '">'
-          + '<td>' + (jetzt ? 'jetzt' : 'ab ' + fmtShort(s.from)) + '</td>'
-          + '<td class="dose">' + fmtNum(s.dose) + '</td>'
-          + '<td class="unit">' + u + '</td>'
-          + '<td class="till">' + (s.last ? 'Ziel' : 'bis ' + fmtShort(s.until)) + '</td>'
-          + '</tr>';
+        const breite = (s.dose / hoch) * 100;
+        return '<div class="pz' + (jetzt ? ' jetzt' : '') + '">'
+          + '<div class="pz-wann">' + (jetzt ? 'jetzt' : 'ab ' + fmtShort(s.from)) + '</div>'
+          + '<div class="pz-bar">'
+            + '<div class="pz-fill" style="width:' + breite.toFixed(1) + '%"></div>'
+            + '<div class="pz-dose">' + fmtNum(s.dose) + '</div>'
+          + '</div>'
+          + '<div class="pz-bis">' + (s.last ? 'Ziel' : 'bis ' + fmtShort(s.until)) + '</div>'
+          + '</div>';
       }).join('');
       const rest = sched.length - (von + zeigen.length);
       const mehr = rest > 0
         ? '<div class="plan-more">\u2026 ' + rest
-          + (rest===1 ? ' weiterer Schritt' : ' weitere Schritte') + ' bis zum Ziel</div>'
+          + (rest===1 ? ' weitere Stufe' : ' weitere Stufen') + ' bis zum Ziel</div>'
         : '';
 
       prev.innerHTML =
         '<div class="plan-head">' + kopf + '</div>'
-        + '<table class="plan-sched"><tbody>' + rows + '</tbody></table>'
+        + '<div class="plan-zeilen">' + rows + '</div>'
         + mehr
         + '<div class="plan-foot">'
           + 'Ziel ' + fmtNum(p.targetDose) + ' ' + u + ' am ' + fmtDate(end)
