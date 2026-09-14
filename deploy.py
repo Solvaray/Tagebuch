@@ -6,6 +6,34 @@ import os
 import sys
 import threading
 
+TEST_FILE = os.path.join('test', 'rechnen.test.js')
+
+
+def run_tests(cwd):
+    """Rechentests laufen lassen.
+
+    (True, ausgabe)  bestanden
+    (False, ausgabe) durchgefallen - dann wird nicht deployt
+    (None, grund)    liessen sich nicht ausfuehren
+
+    Warum das vor dem Push gehoert: die App rechnet Dosiswerte. Ein Fehler
+    darin ist auf dem Handy nicht zu erkennen - dort steht dann einfach
+    eine falsche Zahl.
+    """
+    import os.path
+    if not os.path.exists(os.path.join(cwd, TEST_FILE)):
+        return None, TEST_FILE + " ist nicht da."
+    try:
+        r = subprocess.run(['node', TEST_FILE], cwd=cwd,
+                           capture_output=True, text=True, timeout=120)
+    except FileNotFoundError:
+        return None, "Node.js ist nicht installiert oder nicht im PATH."
+    except subprocess.TimeoutExpired:
+        return False, "Die Tests sind in ein Timeout gelaufen."
+    ausgabe = ((r.stdout or '') + (r.stderr or '')).strip()
+    return (r.returncode == 0), ausgabe
+
+
 class DeployApp:
     def __init__(self, root):
         self.root = root
@@ -71,6 +99,27 @@ class DeployApp:
             messagebox.showerror("Error", "Alle Felder erforderlich")
             return
         
+        # Tests zuerst, im Hauptthread - Dialoge gehoeren nicht in einen Worker
+        self.status.config(text="⏳ Rechentests laufen...")
+        self.root.update()
+        bestanden, ausgabe = run_tests(os.getcwd())
+
+        if bestanden is False:
+            self.status.config(text="❌ Tests rot – nicht deployt", fg="#c2685a")
+            messagebox.showerror(
+                "Tests rot",
+                "Deploy abgebrochen, es wurde nichts gepusht.\n\n" + ausgabe)
+            return
+
+        if bestanden is None:
+            weiter = messagebox.askyesno(
+                "Tests nicht gelaufen",
+                ausgabe + "\n\nOhne Tests ist ungeprüft, ob die App richtig "
+                "rechnet.\n\nTrotzdem deployen?")
+            if not weiter:
+                self.status.config(text="Abgebrochen", fg="#8b9099")
+                return
+
         self.deploy_btn.config(state="disabled")
         self.status.config(text="⏳ Deployen läuft...")
         self.root.update()
@@ -88,11 +137,16 @@ class DeployApp:
             subprocess.run(['git', 'config', 'user.name', username], cwd=cwd, capture_output=True, check=True)
             subprocess.run(['git', 'config', 'user.email', email], cwd=cwd, capture_output=True, check=True)
             subprocess.run(['git', 'add', '.'], cwd=cwd, capture_output=True, check=True)
-            subprocess.run(['git', 'commit', '-m', 'initial tagebuch app'], cwd=cwd, capture_output=True, check=True)
+            # Leerer Commit ist kein Fehler - dann gibt es einfach nichts Neues
+            subprocess.run(['git', 'commit', '-m', 'Update'], cwd=cwd, capture_output=True)
             subprocess.run(['git', 'branch', '-M', 'main'], cwd=cwd, capture_output=True, check=True)
             
-            remote_url = f"https://{username}:{token}@github.com/{username}/tagebuch.git"
-            subprocess.run(['git', 'remote', 'add', 'origin', remote_url], cwd=cwd, capture_output=True, check=True)
+            vorhanden = subprocess.run(['git', 'remote'], cwd=cwd,
+                                       capture_output=True, text=True)
+            if 'origin' not in (vorhanden.stdout or '').split():
+                remote_url = f"https://{username}:{token}@github.com/{username}/tagebuch.git"
+                subprocess.run(['git', 'remote', 'add', 'origin', remote_url],
+                               cwd=cwd, capture_output=True, check=True)
             subprocess.run(['git', 'push', '-u', 'origin', 'main'], cwd=cwd, capture_output=True, check=True)
             
             self.root.after(0, self._on_success, username)

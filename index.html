@@ -269,6 +269,20 @@
     color:var(--text-dim); margin:0 0 16px;
   }
   .plan-warn strong{color:var(--text); display:block; margin-bottom:4px;}
+  /* Fahrplan in der Plan-Vorschau: Stufen als Tabelle, damit Datum und
+     Dosis untereinander stehen und man den naechsten Schritt sofort sieht. */
+  .plan-head{font-size:13px; color:var(--text); line-height:1.5; margin-bottom:9px;}
+  .plan-head b{color:var(--accent); font-family:'JetBrains Mono',monospace; font-weight:600;}
+  table.plan-sched{width:100%; border-collapse:collapse;
+    font-family:'JetBrains Mono',monospace; font-size:12px;}
+  table.plan-sched td{padding:5px 0; border-bottom:1px solid var(--border); color:var(--text-dim);}
+  table.plan-sched td.dose{text-align:right; color:var(--text); font-size:12.5px;}
+  table.plan-sched td.unit{padding-left:4px; font-size:10.5px;}
+  table.plan-sched td.till{text-align:right; font-size:10.5px;}
+  table.plan-sched tr.now td{color:var(--accent);}
+  table.plan-sched tr:last-child td{border-bottom:none;}
+  .plan-more{font-size:11.5px; color:var(--text-dim); margin-top:7px;}
+  .plan-foot{font-size:11.5px; color:var(--text-dim); line-height:1.55; margin-top:9px;}
 
   input[type=range]{
     -webkit-appearance:none; appearance:none; width:100%; height:28px;
@@ -1128,18 +1142,75 @@
       return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit', year:'numeric'});
     }
 
+    function fmtNum(v){
+      return Number(v).toLocaleString('de-DE', {maximumFractionDigits:2});
+    }
+    function fmtShort(d){
+      return d.toLocaleDateString('de-DE', {day:'2-digit', month:'2-digit'});
+    }
+
+    /* Die Vorschau schreibt nur fort, was in den Feldern steht: welcher
+       Sollwert ab welchem Tag gilt, wie lange der aktuelle Schritt noch
+       laeuft, wie schnell das im Schnitt ist. Nichts davon ist ein
+       Vorschlag - die Zahlen kommen alle aus dem Formular. */
     function preview(){
       const p = fromForm();
       if(!P.valid(p)){
-        prev.textContent = 'Alle Felder ausfüllen. Der Zielwert muss unter der Startdosis liegen.';
+        prev.innerHTML = '<div class="plan-head">Alle Felder ausf\u00fcllen. '
+          + 'Der Zielwert muss unter der Startdosis liegen.</div>';
         return;
       }
+      const u = 'mg D\u00c4';
+      const pace = P.pace(p);
+      const pos = P.position(p);
+      const sched = P.schedule(p);
       const end = P.endDate(p);
-      const heute = P.targetFor(new Date(), p);
-      const steps = Math.ceil((p.startDose - p.targetDose) / p.stepAmount);
-      prev.textContent = steps + (steps===1?' Schritt':' Schritte') + ' bis ' + p.targetDose
-        + ' mg DÄ, Zielwert am ' + fmtDate(end)
-        + (heute===null ? ' · Start liegt in der Zukunft' : ' · Soll heute ' + heute + ' mg DÄ');
+
+      let kopf;
+      if(!pos.started){
+        kopf = 'Start am ' + fmtDate(pos.startDate) + ' \u2013 in ' + pos.startsIn
+          + (pos.startsIn===1 ? ' Tag' : ' Tagen')
+          + '<br>Erster Sollwert <b>' + fmtNum(p.startDose) + ' ' + u + '</b>';
+      } else if(pos.done){
+        kopf = 'Zielwert <b>' + fmtNum(p.targetDose) + ' ' + u + '</b> erreicht';
+      } else {
+        kopf = 'Heute Soll <b>' + fmtNum(pos.target) + ' ' + u + '</b>'
+          + ' \u00b7 Stufe ' + pos.step + ' von ' + pos.steps
+          + (pos.daysToNext === null ? ''
+            : '<br>N\u00e4chster Schritt in ' + pos.daysToNext
+              + (pos.daysToNext===1 ? ' Tag' : ' Tagen')
+              + ' auf <b>' + fmtNum(pos.next.dose) + ' ' + u + '</b>');
+      }
+
+      const von = pos.started ? Math.max(0, pos.step - 1) : 0;
+      const zeigen = sched.slice(von, von + 6);
+      const rows = zeigen.map((s, k) => {
+        const jetzt = pos.started && (von + k) === (pos.step - 1);
+        return '<tr class="' + (jetzt ? 'now' : '') + '">'
+          + '<td>' + (jetzt ? 'jetzt' : 'ab ' + fmtShort(s.from)) + '</td>'
+          + '<td class="dose">' + fmtNum(s.dose) + '</td>'
+          + '<td class="unit">' + u + '</td>'
+          + '<td class="till">' + (s.last ? 'Ziel' : 'bis ' + fmtShort(s.until)) + '</td>'
+          + '</tr>';
+      }).join('');
+      const rest = sched.length - (von + zeigen.length);
+      const mehr = rest > 0
+        ? '<div class="plan-more">\u2026 ' + rest
+          + (rest===1 ? ' weiterer Schritt' : ' weitere Schritte') + ' bis zum Ziel</div>'
+        : '';
+
+      prev.innerHTML =
+        '<div class="plan-head">' + kopf + '</div>'
+        + '<table class="plan-sched"><tbody>' + rows + '</tbody></table>'
+        + mehr
+        + '<div class="plan-foot">'
+          + 'Ziel ' + fmtNum(p.targetDose) + ' ' + u + ' am ' + fmtDate(end)
+          + ' \u00b7 ' + pace.steps + (pace.steps===1 ? ' Schritt' : ' Schritte')
+          + ' \u00fcber ' + pace.days + ' Tage'
+          + (pos.started && !pos.done ? ' \u00b7 noch ' + pos.daysLeft + ' Tage' : '')
+          + '<br>\u00d8 \u2212' + fmtNum(pace.perWeek) + ' ' + u + ' pro Woche'
+          + ' (\u2212' + fmtNum(pace.perDay) + ' pro Tag)'
+        + '</div>';
     }
 
     Object.keys(F).forEach(k => g(F[k]).addEventListener('input', preview));

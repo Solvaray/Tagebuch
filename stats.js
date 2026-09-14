@@ -7,6 +7,23 @@
   var STORAGE_KEY = 'tagebuch_entries_v1';
   var DAY = 86400000;
 
+  /* ---------- Kalendertage ----------
+     Ein Tag sind nicht immer 86.400.000 ms: in Europe/Berlin hat der
+     Umstellungstag im Maerz 23 Stunden und der im Oktober 25. Wer mit
+     Millisekunden rechnet, verschiebt danach jede Tagesgrenze um eine
+     Stunde - und damit reihenweise Werte um einen ganzen Tag.
+     Darum: Datumsteile rechnen, nie Zeitstempel addieren. */
+  function dMidnight(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  }
+  function dAdd(d, n) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+  }
+  function dDiff(a, b) {            // a minus b, in Kalendertagen
+    return Math.round((Date.UTC(a.getFullYear(), a.getMonth(), a.getDate()) -
+                       Date.UTC(b.getFullYear(), b.getMonth(), b.getDate())) / 86400000);
+  }
+
   var state = { range: 30, focus: '*', metric: 'auto' };
   var sheet = null;
 
@@ -217,16 +234,16 @@
 
   function buildSeries(all, days, focus, valueOf) {
     var end = logicalDate(new Date());
-    var start = new Date(end.getTime() - (days - 1) * DAY);
+    var start = dAdd(end, -(days - 1));
     var buckets = {}, labels = [], dates = [];
     for (var i = 0; i < days; i++) {
-      var d = new Date(start.getTime() + i * DAY);
+      var d = dAdd(start, i);
       buckets[dayKey(d)] = 0;
       dates.push(d);
       labels.push(String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0'));
     }
     var inRange = 0, prev = 0;
-    var prevStart = new Date(start.getTime() - days * DAY);
+    var prevStart = dAdd(start, -days);
     all.forEach(function (e) {
       if (!matchesFocus(e, focus)) return;
       var raw = new Date(e.time);
@@ -294,120 +311,237 @@
     return d;
   }
 
-  function barChart(series, avg, unitLabel, showAvg, targets) {
-    var W = 560, H = 250, padL = 40, padR = 10, padB = 24, padT = 20;
+  /* Wochenbuendel fuer lange Zeitraeume. Gemittelt wird pro Tag, nicht
+     summiert: der Sollwert des Plans ist eine Tagesdosis - eine Wochensumme
+     daneben zu legen waere ein Vergleich zweier verschiedener Dinge. */
+  function weekly(series, targets) {
+    var vals = [], labels = [], dates = [], tg = [];
     var n = series.values.length;
-    var known = (targets || []).filter(function (t) { return t !== null && t !== undefined; });
-    // Die Soll-Linie muss mit in die Skala, sonst laeuft sie oben aus dem Bild
-    var peak = Math.max.apply(null, series.values.concat(known).concat([0]));
-    var max = niceCeil(peak);
+    var first = n % 7;               // Rest nach vorne, damit der letzte Block heute endet
+    var i = 0;
+    while (i < n) {
+      var len = (i === 0 && first) ? first : 7;
+      var slice = series.values.slice(i, i + len);
+      var sum = 0;
+      slice.forEach(function (v) { sum += v; });
+      vals.push(Math.round((sum / slice.length) * 10) / 10);
+      var d = series.dates[i];
+      labels.push(String(d.getDate()).padStart(2, '0') + '.' + String(d.getMonth() + 1).padStart(2, '0'));
+      dates.push(d);
+      if (targets) {
+        var ts = targets.slice(i, i + len).filter(function (t) { return t !== null && t !== undefined; });
+        var tsum = 0;
+        ts.forEach(function (t) { tsum += t; });
+        tg.push(ts.length ? Math.round((tsum / ts.length) * 10) / 10 : null);
+      }
+      i += len;
+    }
+    return {
+      series: { values: vals, labels: labels, dates: dates, total: series.total, prevTotal: series.prevTotal },
+      targets: targets ? tg : null
+    };
+  }
+
+  /* Textbreite grob schaetzen - JetBrains Mono ist dicktengleich, da reicht
+     ein Faktor. Wird nur gebraucht, um Labels nicht uebereinander zu legen. */
+  function textW(s, size) { return String(s).length * size * 0.60 + 3; }
+
+  function barChart(series, avg, unitLabel, showAvg, targets) {
+    /* Absichtlich schmale viewBox: das SVG wird auf Handybreite skaliert.
+       Bei 560 Einheiten schrumpft Schriftgroesse 10 auf gut 6 Pixel - lesbar
+       ist das nicht. Bei 360 bleibt eine Einheit ungefaehr ein Pixel. */
+    var W = 360, H = 208, padL = 29, padR = 9, padB = 19, padT = 21;
+    var FS = 9.5, MONO = 'JetBrains Mono, monospace';
+    var n = series.values.length;
+    var tg = targets || [];
+    var known = tg.filter(function (t) { return t !== null && t !== undefined; });
+
+    var barMax = Math.max.apply(null, series.values.concat([0]));
+    /* Die Soll-Linie muss mit in die Skala, sonst laeuft sie oben aus dem
+       Bild. Die 5 % Luft darueber sind fuer die Zahlen: ohne sie stoesst der
+       hoechste Balken an den Rand und sein Label muss nach innen rutschen. */
+    var max = niceCeil(Math.max(barMax, known.length ? Math.max.apply(null, known) : 0) * 1.05);
     var innerW = W - padL - padR, innerH = H - padT - padB;
     var slot = innerW / n;
-    var bw = Math.max(2, Math.min(slot - (n > 45 ? 1 : 4), n <= 7 ? 48 : 34));
+    var bw = Math.max(1.5, Math.min(slot - (slot > 7 ? 2.5 : 0.8), 30));
     var baseY = padT + innerH;
-    var labelBars = n <= 14;
+    var yOf = function (v) { return baseY - (v / max) * innerH; };
 
-    // Gitterlinien mit beschrifteter Achse
+    /* Belegte Textflaechen. Jedes Label prueft hier, ob es kollidiert -
+       lieber eine Zahl weniger als zwei uebereinander. */
+    var taken = [];
+    function frei(x0, x1, y) {
+      if (x0 < padL - 2 || x1 > W - padR + 2) return false;
+      for (var k = 0; k < taken.length; k++) {
+        if (x0 < taken[k][1] && x1 > taken[k][0] && Math.abs(y - taken[k][2]) < 11) return false;
+      }
+      return true;
+    }
+
+    // ---------- Gitter ----------
+    /* Viertel nur beschriften, wenn dabei ganze Zahlen herauskommen -
+       "12,5 / 37,5" an der Achse liest sich wie ein Messwert, ist aber nur
+       ein Teilstrich. */
     var grid = '';
     [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
       var y = baseY - innerH * f;
-      var labelled = (f === 0 || f === 0.5 || f === 1);
+      var v = max * f;
+      var zeigen = (f === 0 || f === 0.5 || f === 1) || v === Math.round(v);
       grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
-        '" stroke="var(--border)" stroke-width="1" opacity="' + (f === 0 ? 1 : (labelled ? 0.45 : 0.18)) + '"></line>' +
-        (labelled ? '<text x="' + (padL - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="10"' +
-          ' fill="var(--text-dim)" font-family="JetBrains Mono, monospace">' + esc(num(max * f)) + '</text>' : '');
+        '" stroke="var(--border)" stroke-width="1" opacity="' + (f === 0 ? 1 : 0.3) + '"></line>' +
+        (zeigen ? '<text x="' + (padL - 5) + '" y="' + (y + 3.2).toFixed(1) + '" text-anchor="end" font-size="' + FS +
+          '" fill="var(--text-dim)" font-family="' + MONO + '">' + esc(num(v)) + '</text>' : '');
     });
 
-    var bars = '', ticks = '', values = '';
-    var every = n <= 10 ? 1 : Math.ceil(n / 7);
-
-    /* Bei vielen Balken wird jede Zahl zu Matsch. Dann nur die zwei, die man
-       wirklich sucht: der hoechste Tag und heute. */
-    var peakIdx = series.values.indexOf(peak);
-    function labelThis(i, v) {
-      if (v <= 0) return false;
-      return labelBars || i === peakIdx || i === n - 1;
-    }
-
+    // ---------- Balken ----------
+    var bars = '';
     series.values.forEach(function (v, i) {
+      if (!(v > 0)) return;
       var h = (v / max) * innerH;
       var x = padL + slot * i + (slot - bw) / 2;
       var y = baseY - h;
-      var heute = (i === n - 1);
-      if (v > 0) {
-        bars += '<path d="' + barPath(x, y, bw, Math.max(h, 2), Math.min(4, bw / 2)) +
-          '" fill="url(#' + (heute ? 'barGradToday' : 'barGrad') + ')"></path>';
-        if (labelThis(i, v)) {
-          /* Bei einem Balken, der fast bis oben geht, wuerde die Zahl aus dem
-             Bild ragen - dann steht sie im Balken statt darueber. */
-          var innen = (y - 6) < padT + 2;
-          values += '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (innen ? (y + 12).toFixed(1) : (y - 6).toFixed(1)) +
-            '" text-anchor="middle" font-size="10.5" fill="' + (innen ? '#14161a' : 'var(--text)') + '"' +
-            ' font-family="JetBrains Mono, monospace">' + esc(num(v)) + '</text>';
-        }
-      }
-      if (i % every === 0 || i === n - 1) {
-        ticks += '<text x="' + (padL + slot * i + slot / 2).toFixed(1) + '" y="' + (H - 6) +
-          '" text-anchor="middle" font-size="10" fill="var(--text-dim)"' +
-          ' font-family="JetBrains Mono, monospace">' + series.labels[i] + '</text>';
-      }
+      bars += '<path d="' + barPath(x, y, bw, Math.max(h, 1.5), Math.min(3, bw / 2)) +
+        '" fill="url(#' + (i === n - 1 ? 'barGradToday' : 'barGrad') + ')"></path>';
     });
 
-    /* Flaeche hinter die Balken, Linie darueber: sonst verschwindet die
-       Tendenz genau dort, wo am meisten los war. */
-    var trendArea = '', trendLine = '';
-    if (showAvg) {
-      var pts = avg.map(function (v, i) {
-        return {
-          x: padL + slot * i + slot / 2,
-          y: Math.max(padT, Math.min(baseY, baseY - (v / max) * innerH))
-        };
+    /* ---------- Schnitt ----------
+       Nur die Linie, keine Flaeche mehr: die Flaeche lief zwischen den
+       Balken hindurch und liess Tage ohne Eintrag wie schwarze Balken
+       aussehen. */
+    var trendLine = '', avgPts = null;
+    if (showAvg && avg && avg.length === n) {
+      avgPts = avg.map(function (v, i) {
+        return { x: padL + slot * i + slot / 2, y: Math.max(padT, Math.min(baseY, yOf(v))) };
       });
-      var d = smoothPath(pts);
-      trendArea = '<path d="' + d + 'L' + pts[pts.length - 1].x.toFixed(1) + ',' + baseY +
-        'L' + pts[0].x.toFixed(1) + ',' + baseY + 'Z" fill="url(#areaGrad)"></path>';
-      trendLine = '<path d="' + d + '" fill="none" stroke="#d9b26a" stroke-width="2.2"' +
-        ' stroke-linejoin="round" stroke-linecap="round" opacity=".95"></path>' +
-        '<circle cx="' + pts[pts.length - 1].x.toFixed(1) + '" cy="' + pts[pts.length - 1].y.toFixed(1) +
-        '" r="3.2" fill="#d9b26a"></circle>';
+      var d = smoothPath(avgPts);
+      trendLine = '<path d="' + d + '" fill="none" stroke="var(--bg)" stroke-width="3.6" opacity=".7"' +
+        ' stroke-linejoin="round" stroke-linecap="round"></path>' +
+        '<path d="' + d + '" fill="none" stroke="#d9b26a" stroke-width="1.9"' +
+        ' stroke-linejoin="round" stroke-linecap="round"></path>' +
+        '<circle cx="' + avgPts[n - 1].x.toFixed(1) + '" cy="' + avgPts[n - 1].y.toFixed(1) +
+        '" r="2.6" fill="#d9b26a" stroke="var(--bg)" stroke-width="1"></circle>';
     }
 
-    /* Soll-Linie aus dem eigenen Plan. Gestrichelt und in anderer Farbe als
-       der Schnitt, damit niemand die beiden verwechselt. Luecken bleiben
-       Luecken - vor dem Planstart gibt es keinen Sollwert. */
+    /* ---------- Soll-Linie aus dem eigenen Plan ----------
+       Gestrichelt und in anderer Farbe als der Schnitt, damit niemand die
+       beiden verwechselt. Luecken bleiben Luecken - vor dem Planstart gibt
+       es keinen Sollwert. Am rechten Ende steht die Zahl: eine Linie ohne
+       Wert laesst einen raten, wo das Soll gerade liegt. Das Label wird vor
+       den Balkenzahlen gesetzt, damit es seinen Platz behaelt. */
     var plan = '';
     if (known.length) {
-      var run = [];
-      var segs = [];
-      (targets || []).forEach(function (t, i) {
+      var run = [], segs = [];
+      tg.forEach(function (t, i) {
         if (t === null || t === undefined) { if (run.length > 1) segs.push(run); run = []; return; }
-        run.push((padL + slot * i + slot / 2).toFixed(1) + ',' + (baseY - (t / max) * innerH).toFixed(1));
+        run.push({ x: padL + slot * i + slot / 2, y: yOf(t), t: t });
       });
       if (run.length > 1) segs.push(run);
       plan = segs.map(function (pts) {
-        return '<polyline points="' + pts.join(' ') + '" fill="none" stroke="#7fa8c9"' +
-          ' stroke-width="2" stroke-dasharray="5 4" stroke-linecap="round"></polyline>';
+        var s = pts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
+        return '<polyline points="' + s + '" fill="none" stroke="var(--bg)" stroke-width="4"' +
+          ' opacity=".65" stroke-linecap="round"></polyline>' +
+          '<polyline points="' + s + '" fill="none" stroke="#7fa8c9" stroke-width="1.9"' +
+          ' stroke-dasharray="4 3.5" stroke-linecap="round"></polyline>';
       }).join('');
+
+      var lastSeg = segs[segs.length - 1];
+      if (lastSeg) {
+        var lp = lastSeg[lastSeg.length - 1];
+        var lbl = 'Soll ' + num(lp.t);
+        var lw = textW(lbl, FS);
+        var lx = Math.min(lp.x - lw / 2, W - padR - lw);
+        if (lx < padL) lx = padL;
+        /* Nicht auf die Schnitt-Linie setzen: liegen Soll und Ist nah
+           beieinander, wandert das Label nach unten. */
+        var ly = lp.y - 6;
+        if (avgPts && Math.abs(avgPts[n - 1].y - lp.y) < 13) ly = lp.y + 13;
+        if (ly < padT + 7) ly = lp.y + 13;
+        if (ly > baseY - 2) ly = lp.y - 6;
+        taken.push([lx, lx + lw, ly]);
+        plan += '<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" font-size="' + FS +
+          '" font-family="' + MONO + '" fill="#9cc3e0" stroke="var(--bg)" stroke-width="2.4"' +
+          ' stroke-linejoin="round" paint-order="stroke">' + esc(lbl) + '</text>';
+      }
     }
+
+    /* ---------- Zahlen an den Balken ----------
+       Erst alle Kandidaten, dann nach Wichtigkeit platzieren und alles
+       ueberspringen, was mit einem schon gesetzten Label kollidiert. So
+       stehen bei wenigen Balken alle Zahlen da und bei vielen die, auf die
+       es ankommt - statt wie vorher fast keine. */
+    var lastIdx = -1, peakIdx = -1;
+    series.values.forEach(function (v, i) {
+      if (v > 0) { lastIdx = i; if (peakIdx < 0 || v > series.values[peakIdx]) peakIdx = i; }
+    });
+    var order = [];
+    series.values.forEach(function (v, i) { if (v > 0) order.push(i); });
+    order.sort(function (a, b) {
+      var ra = a === lastIdx ? 0 : (a === peakIdx ? 1 : 2);
+      var rb = b === lastIdx ? 0 : (b === peakIdx ? 1 : 2);
+      return ra !== rb ? ra - rb : a - b;
+    });
+
+    /* Liegt Ist ungefaehr auf Soll, faellt die Zahl genau auf die Linie.
+       Dann rueckt sie darueber - sonst liest man beides schlechter. */
+    var planY = (tg.length === n) ? tg.map(function (t) {
+      return (t === null || t === undefined) ? null : yOf(t);
+    }) : null;
+
+    var values = '';
+    order.forEach(function (i) {
+      var v = series.values[i];
+      var label = num(v);
+      var cx = padL + slot * i + slot / 2;
+      var w = textW(label, FS);
+      var x0 = cx - w / 2, x1 = cx + w / 2;
+      var y = yOf(v);
+      /* Balken fast bis oben: die Zahl wuerde aus dem Bild ragen, also
+         steht sie dann im Balken. */
+      var innen = (y - 5) < padT + 1;
+      var ty = innen ? y + 10 : y - 5;
+      if (!innen) {
+        var linien = [];
+        if (avgPts) linien.push(avgPts[i].y);
+        if (planY && planY[i] !== null) linien.push(planY[i]);
+        linien.forEach(function (ly2) {
+          if (ty - 7 < ly2 && ty + 2 > ly2) ty = Math.min(ty, ly2 - 9);
+        });
+        if (ty < padT + 6) ty = y - 5;   // oben kein Platz: dann eben auf der Linie
+      }
+      if (!frei(x0, x1, ty)) return;
+      taken.push([x0, x1, ty]);
+      values += '<text x="' + cx.toFixed(1) + '" y="' + ty.toFixed(1) +
+        '" text-anchor="middle" font-size="' + FS + '" font-family="' + MONO + '"' +
+        ' fill="' + (innen ? '#14161a' : 'var(--text)') + '"' +
+        (innen ? '' : ' stroke="var(--bg)" stroke-width="2.4" stroke-linejoin="round" paint-order="stroke"') +
+        '>' + esc(label) + '</text>';
+    });
+
+    // ---------- Datumsachse ----------
+    var ticks = '';
+    var every = Math.max(1, Math.ceil(textW('00.00', FS) / slot));
+    series.values.forEach(function (v, i) {
+      if ((n - 1 - i) % every !== 0) return;          // von hinten, damit heute beschriftet ist
+      var cx = padL + slot * i + slot / 2;
+      if (cx - textW(series.labels[i], FS) / 2 < padL - 3) return;
+      ticks += '<text x="' + cx.toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle" font-size="' + FS +
+        '" fill="var(--text-dim)" font-family="' + MONO + '">' + esc(series.labels[i]) + '</text>';
+    });
 
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="Tagesverlauf">' +
       '<defs>' +
         '<linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">' +
           '<stop offset="0%" stop-color="#8fab98" stop-opacity="1"></stop>' +
-          '<stop offset="100%" stop-color="#7c9885" stop-opacity=".32"></stop>' +
+          '<stop offset="100%" stop-color="#7c9885" stop-opacity=".34"></stop>' +
         '</linearGradient>' +
         '<linearGradient id="barGradToday" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0%" stop-color="#b9d2c0" stop-opacity="1"></stop>' +
-          '<stop offset="100%" stop-color="#8fab98" stop-opacity=".38"></stop>' +
-        '</linearGradient>' +
-        '<linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0%" stop-color="#d9b26a" stop-opacity=".20"></stop>' +
-          '<stop offset="100%" stop-color="#d9b26a" stop-opacity="0"></stop>' +
+          '<stop offset="0%" stop-color="#c6ddcc" stop-opacity="1"></stop>' +
+          '<stop offset="100%" stop-color="#8fab98" stop-opacity=".42"></stop>' +
         '</linearGradient>' +
       '</defs>' +
-      grid + trendArea + bars + trendLine + plan + values + ticks +
-      (unitLabel ? '<text x="' + padL + '" y="11" font-size="10" fill="var(--text-dim)"' +
-        ' font-family="JetBrains Mono, monospace">' + esc(unitLabel) + '</text>' : '') +
+      grid + bars + trendLine + plan + values + ticks +
+      (unitLabel ? '<text x="' + padL + '" y="11" font-size="' + FS + '" fill="var(--text-dim)"' +
+        ' font-family="' + MONO + '">' + esc(unitLabel) + '</text>' : '') +
       '</svg>';
   }
 
@@ -488,7 +622,7 @@
 
     var metricWord = useEq ? 'Diazepam-Äquivalent' : (useSum ? 'Menge' : 'Einträge');
 
-    var since = logicalDate(new Date()).getTime() - (state.range - 1) * DAY;
+    var since = dAdd(logicalDate(new Date()), -(state.range - 1)).getTime();
     var inRange = focused.filter(function (e) { return logicalDate(new Date(e.time)).getTime() >= since; });
     var countInRange = inRange.length;
 
@@ -543,6 +677,21 @@
     var showAvg = series.values.length >= 7;
 
 
+    /* Ueber fuenf Wochen wird aus jedem Tagesbalken ein Strich, an den keine
+       Zahl mehr passt - 90 Balken auf Handybreite sind Matsch. Dann buendelt
+       das Diagramm Wochen und zeigt den Durchschnitt pro Tag. Der bleibt mit
+       der Soll-Linie vergleichbar, weil auch die eine Tagesdosis ist. */
+    var cSeries = series, cTargets = targets, cAvg = avg, cShowAvg = showAvg;
+    var cTitle = 'Tagesverlauf', weeklyOn = false;
+    // In der Legende steht die Kurzform, sonst bricht sie auf dem Handy um
+    var cMetric = useEq ? 'Tageswert' : metricWord;
+    if (series.values.length > 35) {
+      var wk = weekly(series, targets);
+      cSeries = wk.series; cTargets = wk.targets;
+      cAvg = null; cShowAvg = false;
+      cTitle = 'Wochenverlauf'; cMetric = 'Ø pro Tag'; weeklyOn = true;
+    }
+
     var body = sheet.querySelector('#statsBody');
     if (!all.length) {
       body.innerHTML = '<div class="stats-empty">Noch keine Einträge – sobald du welche anlegst, entstehen hier automatisch die Diagramme.</div>';
@@ -551,11 +700,12 @@
 
     body.innerHTML =
       '<div class="chart-card">' +
-        section('Tagesverlauf', '<span class="legend"><i class="l-bar"></i>' + metricWord +
-          (showAvg ? ' <i class="l-line"></i>7-Tage-Schnitt' : '') +
+        section(cTitle, '<span class="legend"><i class="l-bar"></i>' + cMetric +
+          (cShowAvg ? ' <i class="l-line"></i>7-Tage-Schnitt' : '') +
           (planOn ? ' <i class="l-plan"></i>Plan' : '') + '</span>') +
-        barChart(series, avg, unitLabel, showAvg, targets) +
+        barChart(cSeries, cAvg, unitLabel, cShowAvg, cTargets) +
       '</div>' +
+      (weeklyOn ? '<div class="stats-note">Ab 35 Tagen zeigt das Diagramm Wochen statt Tage – je Balken der Durchschnitt pro Tag dieser Woche, damit die Zahlen lesbar bleiben.</div>' : '') +
       '<div class="stats-cards">' + cards + '</div>' +
       (useEq ? (function () {
         var miss = unconverted(inRange);
@@ -780,7 +930,7 @@
     // Schnitt ueber die erfassten Tage, nicht ueber den Kalender
     var days = 1;
     if (first !== null) {
-      days = Math.round((logicalDate(new Date()).getTime() - logicalDate(new Date(first)).getTime()) / DAY) + 1;
+      days = dDiff(logicalDate(new Date()), logicalDate(new Date(first))) + 1;
       if (days < 1) days = 1;
     }
 
