@@ -284,29 +284,16 @@
     return n * base;
   }
 
-  /* Weiche Kurve, die nichts erfindet.
-
-     Catmull-Rom allein schiesst zwischen zwei Punkten ueber den
-     Nachbarwert hinaus. Bei einem Verlauf von Dosiswerten stuende dort
-     dann eine Menge, die an keinem Tag genommen wurde - nach 20 und 120
-     eine Spitze auf 135. Die Kontrollpunkte werden darum auf den Bereich
-     der beiden Tage begrenzt, die das Stueck verbindet: die Kurve bleibt
-     weich, verlaesst aber niemals das Fenster zwischen zwei echten
-     Werten. */
-  function smoothPath(pts) {
-    if (pts.length < 2) return '';
-    if (pts.length === 2) return 'M' + pts[0].x + ',' + pts[0].y + 'L' + pts[1].x + ',' + pts[1].y;
-    var d = 'M' + pts[0].x.toFixed(1) + ',' + pts[0].y.toFixed(1);
-    for (var i = 0; i < pts.length - 1; i++) {
-      var p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-      var lo = Math.min(p1.y, p2.y), hi = Math.max(p1.y, p2.y);
-      var c1 = Math.min(hi, Math.max(lo, p1.y + (p2.y - p0.y) / 6));
-      var c2 = Math.min(hi, Math.max(lo, p2.y - (p3.y - p1.y) / 6));
-      d += 'C' + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + ',' + c1.toFixed(1) +
-           ' ' + (p2.x - (p3.x - p1.x) / 6).toFixed(1) + ',' + c2.toFixed(1) +
-           ' ' + p2.x.toFixed(1) + ',' + p2.y.toFixed(1);
-    }
-    return d;
+  /* Balken nur oben abgerundet. Ein rect mit rx rundet auch die Fusspunkte -
+     die Balken sehen dann aus, als schwebten sie ueber der Nulllinie. */
+  function barPath(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h);
+    return 'M' + x.toFixed(1) + ',' + (y + h).toFixed(1) +
+      'V' + (y + r).toFixed(1) +
+      'Q' + x.toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + r).toFixed(1) + ',' + y.toFixed(1) +
+      'H' + (x + w - r).toFixed(1) +
+      'Q' + (x + w).toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + w).toFixed(1) + ',' + (y + r).toFixed(1) +
+      'V' + (y + h).toFixed(1) + 'Z';
   }
 
   /* Wochenbuendel fuer lange Zeitraeume. Gemittelt wird pro Tag, nicht
@@ -388,6 +375,7 @@
     var padL = Math.max(20, textW(num(max), AFS) + 5);
     var innerW = W - padL - padR, innerH = H - padT - padB;
     var slot = innerW / n;
+    var bw = Math.max(1.5, Math.min(slot - (slot > 7 ? 2.5 : 0.8), 30));
     var baseY = padT + innerH;
     var yOf = function (v) { return baseY - (v / max) * innerH; };
 
@@ -415,28 +403,30 @@
         '" fill="var(--text-dim)" opacity=".8" font-family="' + MONO + '">' + esc(num(max * f)) + '</text>';
     });
 
-    /* ---------- Verlauf: Flaeche, Linie, Punkt je Tag ----------
-       Die Punkte sind wichtig: ohne sie waere nicht mehr zu sehen, wo ein
-       Tag aufhoert und der naechste anfaengt - man laese Werte zwischen
-       zwei Tagen ab, die es nicht gibt. Tage ohne Eintrag fallen auf null
-       und ziehen die Flaeche mit runter; das ist gewollt. */
-    var punkte = series.values.map(function (v, i) {
-      return { x: padL + slot * i + slot / 2, y: yOf(v) };
-    });
-    var kurve = smoothPath(punkte);
-    var flaeche = '<path d="' + kurve +
-      'L' + punkte[n - 1].x.toFixed(1) + ',' + baseY +
-      'L' + punkte[0].x.toFixed(1) + ',' + baseY + 'Z" fill="url(#istGrad)"></path>';
-    var linie = '<path d="' + kurve + '" fill="none" stroke="#8fab98" stroke-width="2"' +
-      ' stroke-linejoin="round" stroke-linecap="round"></path>';
-    var punkteSvg = punkte.map(function (pt, i) {
+    /* ---------- Balken ----------
+       Eine Tagesdosis ist eine abgezaehlte Menge, kein fliessender
+       Messwert. Balken zeigen genau das. Eine Linie von Tag zu Tag
+       behauptet dagegen einen Verlauf zwischen zwei Tagen, den es nicht
+       gibt - bei Dosiswerten keine Kleinigkeit. */
+    var AMPEL = true;
+    var bars = '';
+    series.values.forEach(function (v, i) {
+      if (!(v > 0)) return;
+      var h = (v / max) * innerH;
+      var x = padL + slot * i + (slot - bw) / 2;
+      var y = baseY - h;
       var heute = (i === n - 1);
-      return '<circle cx="' + pt.x.toFixed(1) + '" cy="' + pt.y.toFixed(1) +
-        '" r="' + (heute ? 3.2 : Math.max(1.6, Math.min(2.6, slot / 6))).toFixed(1) +
-        '" fill="' + (heute ? '#c6ddcc' : '#8fab98') + '"' +
-        (heute ? '' : ' opacity=".9"') + '></circle>';
-    }).join('');
-    var bars = flaeche + linie + punkteSvg;
+      /* Ueber dem Sollwert des eigenen Plans warm, sonst gruen. Das
+         beantwortet "liege ich drueber oder drunter" im Bild, ohne ein
+         zweites Diagramm - und ohne eine Zahl zu verstecken. */
+      var soll = (tg.length === n) ? tg[i] : null;
+      var drueber = AMPEL && soll !== null && soll !== undefined && v > soll + 1e-9;
+      var grad = drueber
+        ? (heute ? 'barUeberHeute' : 'barUeber')
+        : (heute ? 'barGradToday' : 'barGrad');
+      bars += '<path d="' + barPath(x, y, bw, Math.max(h, 1.5), Math.min(3, bw / 2)) +
+        '" fill="url(#' + grad + ')"></path>';
+    });
 
     /* Der 7-Tage-Schnitt ist weg. Der Verlauf ist jetzt selbst eine Kurve -
        eine zweite daneben waere genau das Liniengewirr, das die Ansicht
@@ -550,9 +540,21 @@
 
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="Tagesverlauf">' +
       '<defs>' +
-        '<linearGradient id="istGrad" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0%" stop-color="#8fab98" stop-opacity=".38"></stop>' +
-          '<stop offset="100%" stop-color="#8fab98" stop-opacity="0"></stop>' +
+        '<linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#8fab98" stop-opacity="1"></stop>' +
+          '<stop offset="100%" stop-color="#7c9885" stop-opacity=".34"></stop>' +
+        '</linearGradient>' +
+        '<linearGradient id="barGradToday" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#c6ddcc" stop-opacity="1"></stop>' +
+          '<stop offset="100%" stop-color="#8fab98" stop-opacity=".42"></stop>' +
+        '</linearGradient>' +
+        '<linearGradient id="barUeber" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#c98f7a" stop-opacity="1"></stop>' +
+          '<stop offset="100%" stop-color="#c98f7a" stop-opacity=".30"></stop>' +
+        '</linearGradient>' +
+        '<linearGradient id="barUeberHeute" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#e0b09c" stop-opacity="1"></stop>' +
+          '<stop offset="100%" stop-color="#c98f7a" stop-opacity=".38"></stop>' +
         '</linearGradient>' +
       '</defs>' +
       grid + bars + trendLine + plan + values + ticks +
@@ -781,6 +783,17 @@
       cTitle = 'Wochenverlauf'; cMetric = 'Ø pro Tag'; weeklyOn = true;
     }
 
+    /* Einfaerbung nach Soll gibt es nur, wenn ueberhaupt ein Tag darueber
+       liegt - sonst steht in der Legende ein Schluessel fuer eine Farbe,
+       die im Bild nicht vorkommt. */
+    var ampelAktiv = false;
+    if (cTargets && cTargets.length === cSeries.values.length) {
+      cSeries.values.forEach(function (v, i) {
+        var t = cTargets[i];
+        if (t !== null && t !== undefined && v > t + 1e-9) ampelAktiv = true;
+      });
+    }
+
     var body = sheet.querySelector('#statsBody');
     if (!all.length) {
       body.innerHTML = '<div class="stats-empty">Noch keine Einträge – sobald du welche anlegst, entstehen hier automatisch die Diagramme.</div>';
@@ -789,7 +802,14 @@
 
     body.innerHTML =
       '<div class="chart-card">' +
-        section(cTitle, '<span class="legend"><i class="l-bar"></i>' + cMetric +
+        /* Wo Balken ueber dem Soll warm erscheinen, muss die Legende das
+           erklaeren - eine Farbe, die etwas bedeutet, ohne Schluessel ist
+           eine Ratearbeit. Dann tritt "Tageswert" zurueck, sonst bricht
+           die Legende auf dem Handy um. */
+        section(cTitle, '<span class="legend">' +
+          (ampelAktiv
+            ? '<i class="l-bar"></i>bis Soll <i class="l-ueber"></i>drüber'
+            : '<i class="l-bar"></i>' + cMetric) +
           (planOn ? ' <i class="l-plan"></i>Plan' : '') + '</span>') +
         verlaufChart(cSeries, unitLabel, cTargets) +
       '</div>' +
@@ -902,6 +922,7 @@
       '.legend .l-bar{width:9px;height:9px;background:var(--accent);opacity:.85}' +
       '.legend .l-line{width:12px;height:2px;background:#d9b26a;margin-left:6px}' +
       '.legend .l-plan{width:12px;height:0;border-top:2px dashed #7fa8c9;margin-left:6px}' +
+      '.legend .l-ueber{width:9px;height:9px;background:#c98f7a;opacity:.9;margin-left:6px}' +
       '.chart{width:100%;height:auto;display:block}' +
       '.hbars{display:flex;flex-direction:column;gap:7px}' +
       '.hbar-row{display:flex;align-items:center;gap:9px}' +

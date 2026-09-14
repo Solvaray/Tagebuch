@@ -83,7 +83,7 @@ function loadStats(nowMs, storage) {
   const fn = new Function('localStorage', 'Date', 'window', 'document',
     body + '\n; return { buildSeries: buildSeries, movingAverage: movingAverage,' +
     ' weekly: weekly, logicalDate: logicalDate, dayKey: dayKey, eqValue: eqValue,' +
-    ' eqFactor: eqFactor, niceCeil: niceCeil, niceAxis: niceAxis, smoothPath: smoothPath, unitInfo: unitInfo, loadEntries: loadEntries };');
+    ' eqFactor: eqFactor, niceCeil: niceCeil, niceAxis: niceAxis, unitInfo: unitInfo, loadEntries: loadEntries };');
   return fn(
     storage || store(),
     mockDate(nowMs),
@@ -372,37 +372,6 @@ group('Achse in vier Stufen (niceAxis)');
   eq('keine krummen Stufen wie 37,333', krumm, 0);
   eq('ab 40 sind die Stufen ganze Zahlen', unrund, 0);
   eq('keine uebertriebene Kopffreiheit', zuViel, 0);
-}
-
-// =========================================================================
-group('Kurve erfindet keine Werte');
-{
-  const S = loadStats(at(2026, 9, 14));
-
-  /* Der Verlauf ist eine geglaettete Kurve. Catmull-Rom schiesst an harten
-     Spitzen ueber den Nachbarwert hinaus - nach 20 und 120 stuende im Bild
-     eine Spitze auf 135, also eine Menge, die an keinem Tag genommen wurde.
-     Die Kontrollpunkte jedes Stuecks muessen darum zwischen den beiden
-     Tagen liegen, die es verbindet. */
-  const ys = [100, 100, 20, 120, 40, 40, 90];
-  const pts = ys.map((y, i) => ({ x: i * 20, y }));
-  const d = S.smoothPath(pts);
-
-  const teile = d.split('C').slice(1);
-  eq('ein Kurvenstueck je Tagesluecke', teile.length, ys.length - 1);
-
-  let raus = 0;
-  teile.forEach((t, k) => {
-    const z = t.trim().split(/[\s,]+/).map(Number);
-    const lo = Math.min(pts[k].y, pts[k + 1].y);
-    const hi = Math.max(pts[k].y, pts[k + 1].y);
-    [z[1], z[3]].forEach(y => { if (y < lo - 1e-9 || y > hi + 1e-9) raus++; });
-  });
-  eq('kein Kontrollpunkt verlaesst das Fenster zweier echter Tage', raus, 0);
-
-  // zwei Punkte: gerade Linie, keine Kurve
-  eq('zwei Tage ergeben eine Strecke',
-    S.smoothPath([{ x: 0, y: 10 }, { x: 20, y: 40 }]).indexOf('C'), -1);
 }
 
 // ---------- Ergebnis ----------
