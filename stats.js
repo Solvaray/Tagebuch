@@ -436,9 +436,13 @@
     /* ---------- Soll-Linie aus dem eigenen Plan ----------
        Gestrichelt und in anderer Farbe als der Schnitt, damit niemand die
        beiden verwechselt. Luecken bleiben Luecken - vor dem Planstart gibt
-       es keinen Sollwert. Am rechten Ende steht die Zahl: eine Linie ohne
-       Wert laesst einen raten, wo das Soll gerade liegt. Das Label wird vor
-       den Balkenzahlen gesetzt, damit es seinen Platz behaelt. */
+       es keinen Sollwert.
+
+       Der Zahlenwert steht nicht mehr an der Linie, sondern oben links in
+       der Kopfzeile. An der Linie wanderte er: mal ueber dem letzten
+       Balken, mal daneben, je nachdem wieviel Platz rechts blieb - bei
+       sieben Tagen anders als bei dreissig. Ein fester Platz ist ruhiger
+       als einer, der sich je nach Zeitraum verschiebt. */
     var plan = '';
     if (known.length) {
       var run = [], segs = [];
@@ -468,24 +472,6 @@
           ' opacity=".72" stroke-dasharray="4 3.5" stroke-linecap="round"></polyline>';
       }).join('');
 
-      var lastSeg = segs[segs.length - 1];
-      if (lastSeg) {
-        var lp = lastSeg[lastSeg.length - 1];
-        var lbl = 'Soll ' + num(lp.t);
-        var lw = textW(lbl, FS);
-        var lx = Math.min(lp.x - lw / 2, W - padR - lw);
-        if (lx < padL) lx = padL;
-        /* Nicht auf die Schnitt-Linie setzen: liegen Soll und Ist nah
-           beieinander, wandert das Label nach unten. */
-        var ly = lp.y - 6;
-        if (avgPts && Math.abs(avgPts[n - 1].y - lp.y) < 13) ly = lp.y + 13;
-        if (ly < padT + 7) ly = lp.y + 13;
-        if (ly > baseY - 2) ly = lp.y - 6;
-        taken.push([lx, lx + lw, ly]);
-        plan += '<text x="' + lx.toFixed(1) + '" y="' + ly.toFixed(1) + '" font-size="' + FS +
-          '" font-family="' + MONO + '" fill="#9cc3e0" stroke="var(--bg)" stroke-width="2.4"' +
-          ' stroke-linejoin="round" paint-order="stroke">' + esc(lbl) + '</text>';
-      }
     }
 
     /* ---------- Zahlen an den Balken ----------
@@ -571,8 +557,18 @@
         '</linearGradient>' +
       '</defs>' +
       grid + bars + trendLine + plan + values + ticks +
-      (unitLabel ? '<text x="' + padL.toFixed(1) + '" y="11" font-size="' + AFS + '" fill="var(--text-dim)" opacity=".8"' +
-        ' font-family="' + MONO + '">' + esc(unitLabel) + '</text>' : '') +
+      /* Kopfzeile links oben: Einheit, und wenn ein Plan laeuft der
+         aktuelle Sollwert in der Farbe der Linie. */
+      ((unitLabel || known.length)
+        ? '<text x="' + padL.toFixed(1) + '" y="11" font-size="' + AFS +
+          '" fill="var(--text-dim)" opacity=".8" font-family="' + MONO + '">' +
+          esc(unitLabel || '') +
+          (known.length
+            ? '<tspan fill="#9cc3e0" opacity="1">' + (unitLabel ? '  ·  ' : '') +
+              'Soll ' + esc(num(known[known.length - 1])) + '</tspan>'
+            : '') +
+          '</text>'
+        : '') +
       '</svg>';
   }
 
