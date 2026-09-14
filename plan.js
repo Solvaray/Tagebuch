@@ -40,19 +40,39 @@
     } catch (e) { return null; }
   }
 
-  function valid(p) {
-    if (!p || typeof p !== 'object') return false;
-    var nums = ['startDose', 'targetDose', 'stepAmount', 'stepDays'];
-    for (var i = 0; i < nums.length; i++) {
-      var v = Number(p[nums[i]]);
-      if (!isFinite(v) || v < 0) return false;
+  /* Warum ein Plan nicht gilt - als Satz, nicht als ja/nein.
+
+     Vorher gab es nur valid(). Wer auf Speichern drueckte und die Pruefung
+     nicht bestand, sah einen Satz, der fuenf Ursachen in einen Topf warf,
+     und hielt den Plan fuer gespeichert. Hier steht jetzt, welches Feld
+     klemmt. Gibt null zurueck, wenn alles passt. */
+  function problem(p) {
+    if (!p || typeof p !== 'object') return 'Alle Felder ausfüllen.';
+    if (!p.start || isNaN(new Date(p.start + 'T00:00:00').getTime())) {
+      return 'Startdatum fehlt.';
     }
-    if (Number(p.stepDays) < 1) return false;
-    if (Number(p.stepAmount) <= 0) return false;
-    if (Number(p.startDose) <= Number(p.targetDose)) return false;
-    if (!p.start || isNaN(new Date(p.start + 'T00:00:00').getTime())) return false;
-    return true;
+    var felder = [
+      ['startDose', 'Startdosis'],
+      ['targetDose', 'Zielwert'],
+      ['stepAmount', 'Reduktion je Schritt'],
+      ['stepDays', 'Schritt alle … Tage']
+    ];
+    for (var i = 0; i < felder.length; i++) {
+      var v = Number(p[felder[i][0]]);
+      if (!isFinite(v)) return felder[i][1] + ' fehlt.';
+      if (v < 0) return felder[i][1] + ' darf nicht negativ sein.';
+    }
+    if (Number(p.stepDays) < 1) return '„Schritt alle … Tage“ muss mindestens 1 sein.';
+    if (Number(p.stepAmount) <= 0) return '„Reduktion je Schritt“ muss größer als 0 sein.';
+    if (Number(p.startDose) <= Number(p.targetDose)) {
+      return 'Der Zielwert muss unter der Startdosis liegen.';
+    }
+    return null;
   }
+
+  /* Eine Wahrheit, zwei Fragen: valid() ist problem() ohne Begruendung.
+     Getrennt gepflegt wuerden die beiden irgendwann uneins. */
+  function valid(p) { return problem(p) === null; }
 
   function save(p) {
     if (!valid(p)) return false;
@@ -191,7 +211,7 @@
 
   window.TagebuchPlan = {
     get: read, save: save, clear: clear, isActive: isActive,
-    valid: valid, targetFor: targetFor, endDate: endDate, summary: summary,
+    valid: valid, problem: problem, targetFor: targetFor, endDate: endDate, summary: summary,
     schedule: schedule, pace: pace, position: position
   };
 })();

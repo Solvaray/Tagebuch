@@ -374,6 +374,38 @@ group('Achse in vier Stufen (niceAxis)');
   eq('keine uebertriebene Kopffreiheit', zuViel, 0);
 }
 
+// =========================================================================
+group('Warum ein Plan nicht gilt (problem)');
+{
+  const P = loadPlan(at(2026, 9, 14));
+  const gut = { start: '2026-06-01', startDose: 60, targetDose: 20, stepAmount: 4, stepDays: 14 };
+  const mit = (aenderung) => P.problem(Object.assign({}, gut, aenderung));
+
+  eq('vollstaendiger Plan hat kein Problem', P.problem(gut), null);
+  eq('valid() und problem() sind einig', P.valid(gut), P.problem(gut) === null);
+
+  ok('Startdatum fehlt', /Startdatum/.test(mit({ start: '' })), mit({ start: '' }));
+  ok('Startdatum unbrauchbar', /Startdatum/.test(mit({ start: 'kein Datum' })), mit({ start: 'kein Datum' }));
+  ok('Startdosis fehlt', /Startdosis/.test(mit({ startDose: NaN })), mit({ startDose: NaN }));
+  ok('Zielwert fehlt', /Zielwert/.test(mit({ targetDose: NaN })), mit({ targetDose: NaN }));
+  ok('negativer Wert wird benannt', /negativ/.test(mit({ targetDose: -1 })), mit({ targetDose: -1 }));
+  ok('Schrittlaenge unter 1', /mindestens 1/.test(mit({ stepDays: 0 })), mit({ stepDays: 0 }));
+  ok('Reduktion 0', /gr..er als 0/.test(mit({ stepAmount: 0 })), mit({ stepAmount: 0 }));
+  ok('Zielwert nicht unter Startdosis',
+    /unter der Startdosis/.test(mit({ targetDose: 60 })), mit({ targetDose: 60 }));
+
+  /* Der entscheidende Punkt: was problem() durchlaesst, muss save()
+     annehmen - sonst drueckt man Speichern, sieht keinen Grund und der
+     Plan ist trotzdem nicht da. */
+  let uneins = 0;
+  [{}, { start: '' }, { startDose: NaN }, { targetDose: 60 }, { stepDays: 0 },
+   { stepAmount: 0 }, { targetDose: -1 }, { start: 'x' }].forEach(a => {
+    const p2 = Object.assign({}, gut, a);
+    if ((P.problem(p2) === null) !== P.valid(p2)) uneins++;
+  });
+  eq('problem() und valid() nie uneins', uneins, 0);
+}
+
 // ---------- Ergebnis ----------
 console.log('');
 if (fails.length === 0) {

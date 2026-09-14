@@ -1170,9 +1170,13 @@
        aus dem Formular rein. Vorgeschlagen wird nach wie vor nichts. */
     function preview(){
       const p = fromForm();
-      if(!P.valid(p)){
-        prev.innerHTML = '<div class="plan-head">Alle Felder ausf\u00fcllen. '
-          + 'Der Zielwert muss unter der Startdosis liegen.</div>';
+      const grund = P.problem(p);
+      if(grund){
+        /* Der Grund steht im selben roten Kasten wie der
+           Speicher-Hinweis - wer auf Speichern drueckt und nichts
+           passiert, muss hier sehen, woran es liegt. */
+        prev.innerHTML = '<div class="plan-unsaved">' + grund
+          + ' Solange wird nichts gespeichert.</div>';
         return;
       }
       const block = (window.TagebuchStats && window.TagebuchStats.planBlock)
