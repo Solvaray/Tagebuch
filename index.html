@@ -298,6 +298,12 @@
      sitzt (bewusst, damit sie eng unter der Diagramm-Karte klebt). Ohne
      den Abstand schiebt sie sich in den Plan-Fuss. */
   .plan-block{margin:2px 0 20px;}
+  /* Die Vorschau rechnet mit den Formularfeldern, Statistik und
+     Tagesverlauf mit dem gespeicherten Plan. Ohne diesen Hinweis sieht das
+     Plan-Fenster fertig aus, waehrend anderswo nichts erscheint. */
+  .plan-unsaved{font-size:11.5px; color:#d99a6a; line-height:1.5;
+    background:rgba(217,154,106,.09); border:1px solid rgba(217,154,106,.28);
+    border-radius:10px; padding:9px 11px; margin:0 0 11px;}
   .plan-foot{font-size:11.5px; color:var(--text-dim); line-height:1.55; margin-top:9px;}
 
   input[type=range]{
@@ -1171,7 +1177,26 @@
       }
       const block = (window.TagebuchStats && window.TagebuchStats.planBlock)
         ? window.TagebuchStats.planBlock(p) : '';
-      prev.innerHTML = block || '<div class="plan-head">Plan gespeichert.</div>';
+
+      /* Weicht das Formular vom gespeicherten Plan ab, gilt ueberall sonst
+         noch der alte Stand - oder gar keiner. Das muss hier stehen, sonst
+         sucht man den Plan in der Statistik und findet ihn nicht. */
+      const alt = P.get();
+      const gleich = alt
+        && alt.start === p.start
+        && Number(alt.startDose) === Number(p.startDose)
+        && Number(alt.targetDose) === Number(p.targetDose)
+        && Number(alt.stepAmount) === Number(p.stepAmount)
+        && Number(alt.stepDays) === Number(p.stepDays);
+      const hinweis = gleich ? ''
+        : '<div class="plan-unsaved">'
+          + (alt ? 'Ge\u00e4ndert und noch nicht gespeichert.'
+                 : 'Noch nicht gespeichert.')
+          + ' In Statistik und Tagesverlauf erscheint der Plan erst nach '
+          + '\u201eSpeichern\u201c.</div>';
+
+      prev.innerHTML = hinweis
+        + (block || '<div class="plan-head">Plan gespeichert.</div>');
     }
 
     Object.keys(F).forEach(k => g(F[k]).addEventListener('input', preview));
