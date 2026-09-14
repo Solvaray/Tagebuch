@@ -1,0 +1,32 @@
+#!/bin/sh
+# Tagebuch - pre-push: die Rechentests muessen gruen sein.
+#
+# Warum blockierend und nicht nur warnend: die App rechnet Dosiswerte.
+# Ein Rechenfehler ist auf dem Handy nicht zu erkennen, da steht dann
+# einfach eine falsche Zahl. Lieber ein gestoppter Push.
+#
+# Aktivieren - einmal pro Clone, Hooks selbst liegen nicht im Repo:
+#   git config core.hooksPath hooks
+#
+# Umgehen, wenn es sein muss:
+#   git push --no-verify
+
+wurzel=$(git rev-parse --show-toplevel) || exit 1
+cd "$wurzel" || exit 1
+
+stopp() {
+  echo "" >&2
+  echo "  pre-push: $1" >&2
+  echo "  Push gestoppt. Umgehen mit: git push --no-verify" >&2
+  echo "" >&2
+  exit 1
+}
+
+[ -f test/rechnen.test.js ] || stopp "test/rechnen.test.js fehlt."
+
+command -v node >/dev/null 2>&1 || stopp "node nicht gefunden, Tests liefen nicht."
+
+echo "pre-push: Rechentests..."
+node test/rechnen.test.js || stopp "Tests sind rot."
+
+exit 0

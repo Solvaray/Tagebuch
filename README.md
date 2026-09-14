@@ -29,6 +29,27 @@
    ```
 3. Desktop-Verknüpfung wird erstellt
 
+## Rechentests
+
+Die App rechnet Dosiswerte. Ein Rechenfehler faellt auf dem Handy nicht
+auf – da steht dann einfach eine falsche Zahl. Darum:
+
+```
+node test/rechnen.test.js
+```
+
+88 Pruefungen, keine Abhaengigkeiten. `deploy.py` laesst sie vor dem Push
+laufen und bricht bei rot ab.
+
+Damit auch ein `git push` von Hand geprueft wird, einmal pro Clone:
+
+```
+git config core.hooksPath hooks
+```
+
+Dann blockiert `hooks/pre-push` jeden Push mit roten Tests. Notausgang:
+`git push --no-verify`.
+
 ## Beim Deployen braucht ihr:
 
 - **GitHub-Nutzername** (dein Benutzername auf github.com)
