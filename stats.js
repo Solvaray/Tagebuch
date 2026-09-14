@@ -344,7 +344,7 @@
 
   /* Textbreite grob schaetzen - JetBrains Mono ist dicktengleich, da reicht
      ein Faktor. Wird nur gebraucht, um Labels nicht uebereinander zu legen. */
-  function textW(s, size) { return String(s).length * size * 0.60 + 3; }
+  function textW(s, size) { return String(s).length * size * 0.62 + 6; }
 
   /* Achse in vier gleiche Stufen, die alle auf ganze Zahlen fallen.
      Vorher lieferte niceCeil z.B. 150 - an den Viertellinien stehen dann
@@ -397,10 +397,12 @@
     /* Belegte Textflaechen. Jedes Label prueft hier, ob es kollidiert -
        lieber eine Zahl weniger als zwei uebereinander. */
     var taken = [];
+    var LUFT = 3;          // Mindestabstand zwischen zwei Zahlen
     function frei(x0, x1, y) {
       if (x0 < padL - 2 || x1 > W - padR + 2) return false;
       for (var k = 0; k < taken.length; k++) {
-        if (x0 < taken[k][1] && x1 > taken[k][0] && Math.abs(y - taken[k][2]) < 11) return false;
+        if (x0 - LUFT < taken[k][1] && x1 + LUFT > taken[k][0] &&
+            Math.abs(y - taken[k][2]) < 13) return false;
       }
       return true;
     }
@@ -437,12 +439,15 @@
         return { x: padL + slot * i + slot / 2, y: Math.max(padT, Math.min(baseY, yOf(v))) };
       });
       var d = smoothPath(avgPts);
-      trendLine = '<path d="' + d + '" fill="none" stroke="var(--bg)" stroke-width="3.6" opacity=".7"' +
+      /* Zurueckgenommen: die Linien sind Orientierung, die Zahlen sind der
+         Inhalt. Voll deckend konkurrieren sie mit den Werten an den
+         Balken. */
+      trendLine = '<path d="' + d + '" fill="none" stroke="var(--bg)" stroke-width="3" opacity=".45"' +
         ' stroke-linejoin="round" stroke-linecap="round"></path>' +
-        '<path d="' + d + '" fill="none" stroke="#d9b26a" stroke-width="1.9"' +
+        '<path d="' + d + '" fill="none" stroke="#d9b26a" stroke-width="1.6" opacity=".62"' +
         ' stroke-linejoin="round" stroke-linecap="round"></path>' +
         '<circle cx="' + avgPts[n - 1].x.toFixed(1) + '" cy="' + avgPts[n - 1].y.toFixed(1) +
-        '" r="2.6" fill="#d9b26a" stroke="var(--bg)" stroke-width="1"></circle>';
+        '" r="2.3" fill="#d9b26a" opacity=".75"></circle>';
     }
 
     /* ---------- Soll-Linie aus dem eigenen Plan ----------
@@ -461,10 +466,10 @@
       if (run.length > 1) segs.push(run);
       plan = segs.map(function (pts) {
         var s = pts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
-        return '<polyline points="' + s + '" fill="none" stroke="var(--bg)" stroke-width="4"' +
-          ' opacity=".65" stroke-linecap="round"></polyline>' +
-          '<polyline points="' + s + '" fill="none" stroke="#7fa8c9" stroke-width="1.9"' +
-          ' stroke-dasharray="4 3.5" stroke-linecap="round"></polyline>';
+        return '<polyline points="' + s + '" fill="none" stroke="var(--bg)" stroke-width="3.4"' +
+          ' opacity=".45" stroke-linecap="round"></polyline>' +
+          '<polyline points="' + s + '" fill="none" stroke="#7fa8c9" stroke-width="1.7"' +
+          ' opacity=".72" stroke-dasharray="4 3.5" stroke-linecap="round"></polyline>';
       }).join('');
 
       var lastSeg = segs[segs.length - 1];
