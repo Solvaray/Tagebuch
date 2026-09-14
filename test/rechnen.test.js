@@ -83,7 +83,7 @@ function loadStats(nowMs, storage) {
   const fn = new Function('localStorage', 'Date', 'window', 'document',
     body + '\n; return { buildSeries: buildSeries, movingAverage: movingAverage,' +
     ' weekly: weekly, logicalDate: logicalDate, dayKey: dayKey, eqValue: eqValue,' +
-    ' eqFactor: eqFactor, niceCeil: niceCeil, unitInfo: unitInfo, loadEntries: loadEntries };');
+    ' eqFactor: eqFactor, niceCeil: niceCeil, niceAxis: niceAxis, unitInfo: unitInfo, loadEntries: loadEntries };');
   return fn(
     storage || store(),
     mockDate(nowMs),
@@ -343,6 +343,35 @@ group('Achsenobergrenze (niceCeil)');
     ok('niceCeil(' + v + ') >= ' + v, S.niceCeil(v) >= v, 'war ' + S.niceCeil(v));
   });
   eq('niceCeil(0) ist nicht 0', S.niceCeil(0) > 0, true);
+}
+
+// =========================================================================
+group('Achse in vier Stufen (niceAxis)');
+{
+  const S = loadStats(at(2026, 9, 14));
+
+  eq('Spitze 126 -> 160 (0/40/80/120/160)', S.niceAxis(126), 160);
+  eq('Spitze 1159 -> 1200 (0/300/600/900/1200)', S.niceAxis(1159), 1200);
+
+  /* Worauf die Lesbarkeit beruht: die Achse deckt den hoechsten Wert ab,
+     und jede der vier Stufen ist eine Zahl, die man an eine Achse
+     schreibt - sonst bleiben Gitterlinien unbeschriftet und man muss
+     Balkenhoehen schaetzen. */
+  let zuKlein = 0, unrund = 0, zuViel = 0, krumm = 0;
+  for (let v = 0.4; v < 5000; v *= 1.07) {
+    const m = S.niceAxis(v);
+    const stufe = m / 4;
+    if (m < v) zuKlein++;
+    // hoechstens zwei Dezimalen - bei 0,5-mg-Schritten sind welche noetig
+    if (Math.abs(stufe * 100 - Math.round(stufe * 100)) > 1e-9) krumm++;
+    // im mg-DAe-Bereich muessen es ganze Zahlen sein
+    if (v >= 40 && stufe !== Math.round(stufe)) unrund++;
+    if (m > v * 2.2) zuViel++;              // Kopffreiheit im Rahmen
+  }
+  eq('deckt immer den Spitzenwert ab', zuKlein, 0);
+  eq('keine krummen Stufen wie 37,333', krumm, 0);
+  eq('ab 40 sind die Stufen ganze Zahlen', unrund, 0);
+  eq('keine uebertriebene Kopffreiheit', zuViel, 0);
 }
 
 // ---------- Ergebnis ----------

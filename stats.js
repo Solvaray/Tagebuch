@@ -346,12 +346,36 @@
      ein Faktor. Wird nur gebraucht, um Labels nicht uebereinander zu legen. */
   function textW(s, size) { return String(s).length * size * 0.60 + 3; }
 
+  /* Achse in vier gleiche Stufen, die alle auf ganze Zahlen fallen.
+     Vorher lieferte niceCeil z.B. 150 - an den Viertellinien stehen dann
+     37,5 und 112,5, die blieben unbeschriftet, und man musste jede
+     Balkenhoehe zwischen 0, 75 und 150 schaetzen. Jetzt ist jede
+     Gitterlinie eine ablesbare Zahl, und ein Wert wie 120 liegt exakt
+     auf einer davon. */
+  function niceAxis(v) {
+    if (!(v > 0)) return 4;
+    var roh = v / 4;
+    var exp = Math.floor(Math.log(roh) / Math.LN10);
+    var base = Math.pow(10, exp);
+    var f = roh / base;
+    var kand = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
+    var stufe = kand[kand.length - 1];
+    for (var i = 0; i < kand.length; i++) {
+      if (f <= kand[i] + 1e-9) { stufe = kand[i]; break; }
+    }
+    return stufe * base * 4;
+  }
+
   function barChart(series, avg, unitLabel, showAvg, targets) {
     /* Absichtlich schmale viewBox: das SVG wird auf Handybreite skaliert.
        Bei 560 Einheiten schrumpft Schriftgroesse 10 auf gut 6 Pixel - lesbar
        ist das nicht. Bei 360 bleibt eine Einheit ungefaehr ein Pixel. */
-    var W = 360, H = 208, padL = 29, padR = 9, padB = 19, padT = 21;
+    var W = 360, H = 208, padR = 9, padB = 19, padT = 21;
     var FS = 9.5, MONO = 'JetBrains Mono, monospace';
+    /* Achsenzahlen kleiner und blasser als die Werte an den Balken. Vorher
+       sahen beide gleich aus - dann liest man eine Gitterlinie als
+       Messwert. */
+    var AFS = 8.4;
     var n = series.values.length;
     var tg = targets || [];
     var known = tg.filter(function (t) { return t !== null && t !== undefined; });
@@ -360,7 +384,10 @@
     /* Die Soll-Linie muss mit in die Skala, sonst laeuft sie oben aus dem
        Bild. Die 5 % Luft darueber sind fuer die Zahlen: ohne sie stoesst der
        hoechste Balken an den Rand und sein Label muss nach innen rutschen. */
-    var max = niceCeil(Math.max(barMax, known.length ? Math.max.apply(null, known) : 0) * 1.05);
+    var max = niceAxis(Math.max(barMax, known.length ? Math.max.apply(null, known) : 0) * 1.05);
+    /* Linker Rand aus der breitesten Achsenzahl. Feste 29 Einheiten haben
+       vierstellige Werte abgeschnitten - aus "1.200" wurde "..200". */
+    var padL = Math.max(20, textW(num(max), AFS) + 5);
     var innerW = W - padL - padR, innerH = H - padT - padB;
     var slot = innerW / n;
     var bw = Math.max(1.5, Math.min(slot - (slot > 7 ? 2.5 : 0.8), 30));
@@ -379,18 +406,14 @@
     }
 
     // ---------- Gitter ----------
-    /* Viertel nur beschriften, wenn dabei ganze Zahlen herauskommen -
-       "12,5 / 37,5" an der Achse liest sich wie ein Messwert, ist aber nur
-       ein Teilstrich. */
+    /* Alle vier Stufen sind ganze Zahlen, also wird jede beschriftet. */
     var grid = '';
     [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
       var y = baseY - innerH * f;
-      var v = max * f;
-      var zeigen = (f === 0 || f === 0.5 || f === 1) || v === Math.round(v);
-      grid += '<line x1="' + padL + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
-        '" stroke="var(--border)" stroke-width="1" opacity="' + (f === 0 ? 1 : 0.3) + '"></line>' +
-        (zeigen ? '<text x="' + (padL - 5) + '" y="' + (y + 3.2).toFixed(1) + '" text-anchor="end" font-size="' + FS +
-          '" fill="var(--text-dim)" font-family="' + MONO + '">' + esc(num(v)) + '</text>' : '');
+      grid += '<line x1="' + padL.toFixed(1) + '" y1="' + y.toFixed(1) + '" x2="' + (W - padR) + '" y2="' + y.toFixed(1) +
+        '" stroke="var(--border)" stroke-width="1" opacity="' + (f === 0 ? 1 : 0.28) + '"></line>' +
+        '<text x="' + (padL - 5).toFixed(1) + '" y="' + (y + 2.9).toFixed(1) + '" text-anchor="end" font-size="' + AFS +
+        '" fill="var(--text-dim)" opacity=".8" font-family="' + MONO + '">' + esc(num(max * f)) + '</text>';
     });
 
     // ---------- Balken ----------
@@ -540,7 +563,7 @@
         '</linearGradient>' +
       '</defs>' +
       grid + bars + trendLine + plan + values + ticks +
-      (unitLabel ? '<text x="' + padL + '" y="11" font-size="' + FS + '" fill="var(--text-dim)"' +
+      (unitLabel ? '<text x="' + padL.toFixed(1) + '" y="11" font-size="' + AFS + '" fill="var(--text-dim)" opacity=".8"' +
         ' font-family="' + MONO + '">' + esc(unitLabel) + '</text>' : '') +
       '</svg>';
   }
@@ -672,9 +695,11 @@
       hours[Math.floor(d.getHours() / 2)] += valueOf(e);
     });
 
-    /* Unter sieben Tagen ist ein 7-Tage-Schnitt keiner - die Linie taeuscht
-       dann eine Glaettung vor, die es nicht gibt. */
-    var showAvg = series.values.length >= 7;
+    /* Ein 7-Tage-Schnitt braucht mehr als sieben Tage. Bei genau sieben
+       ist die "Kurve" nichts als der Gesamtschnitt, liegt flach ueber den
+       Balken und konkurriert dort mit der Soll-Linie des Plans - genau der
+       undeutliche Bogen, der die 7-Tage-Ansicht unlesbar gemacht hat. */
+    var showAvg = series.values.length > 7;
 
 
     /* Ueber fuenf Wochen wird aus jedem Tagesbalken ein Strich, an den keine
