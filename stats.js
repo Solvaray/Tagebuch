@@ -584,6 +584,87 @@
     }).join('') + '</div>';
   }
 
+  /* ---------- Der Abdosierungsplan als Block ----------
+
+     Steht an zwei Stellen: im Plan-Fenster, wo er eingestellt wird, und in
+     der Statistik. Darum liegt er hier und nicht im Formular - zwei
+     nachgebaute Fassungen laufen sonst irgendwann auseinander, und
+     "identisch" waere nur noch eine Absicht.
+
+     Eine Zeile je Stufe: ab wann, wie viel, bis wann. Alle Zahlen kommen
+     aus TagebuchPlan, also aus den vier Feldern des Nutzers. */
+  function planDatum(d) {
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  /* Ohne Schlusspunkt: das eine Zeichen ist genau das, an dem die Spalte
+     auf Handybreite umbricht. */
+  function planKurz(d) {
+    return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }).replace(/\.$/, '');
+  }
+
+  function planBlock(plan) {
+    var PL = window.TagebuchPlan;
+    if (!PL) return '';
+    var p = plan || PL.get();
+    if (!p || !PL.valid(p)) return '';
+
+    var u = p.unit || 'mg DÄ';
+    var pace = PL.pace(p), pos = PL.position(p), sched = PL.schedule(p), end = PL.endDate(p);
+    if (!pace || !pos || !sched.length) return '';
+
+    var kopf;
+    if (!pos.started) {
+      kopf = 'Start am ' + esc(planDatum(pos.startDate)) + ' – in ' + pos.startsIn +
+        (pos.startsIn === 1 ? ' Tag' : ' Tagen') +
+        '<br>Erster Sollwert <b>' + esc(num(p.startDose)) + ' ' + esc(u) + '</b>';
+    } else if (pos.done) {
+      kopf = 'Zielwert <b>' + esc(num(p.targetDose)) + ' ' + esc(u) + '</b> erreicht';
+    } else {
+      kopf = 'Heute Soll <b>' + esc(num(pos.target)) + ' ' + esc(u) + '</b>' +
+        ' · Stufe ' + pos.step + ' von ' + pos.steps +
+        (pos.daysToNext === null ? ''
+          : '<br>Nächster Schritt in ' + pos.daysToNext +
+            (pos.daysToNext === 1 ? ' Tag' : ' Tagen') +
+            ' auf <b>' + esc(num(pos.next.dose)) + ' ' + esc(u) + '</b>');
+    }
+
+    var von = pos.started ? Math.max(0, pos.step - 1) : 0;
+    var zeigen = sched.slice(von, von + 7);
+    /* Der Balken wird an der hoechsten gezeigten Stufe gemessen, nicht an
+       der Startdosis: sonst waeren bei einem weit fortgeschrittenen Plan
+       alle Balken kurze Stummel. */
+    var hoch = Math.max.apply(null, zeigen.map(function (x) { return x.dose; })) || 1;
+    var rows = zeigen.map(function (st, k) {
+      var jetzt = pos.started && (von + k) === (pos.step - 1);
+      var breite = (st.dose / hoch) * 100;
+      return '<div class="pz' + (jetzt ? ' jetzt' : '') + '">' +
+        '<div class="pz-wann">' + (jetzt ? 'jetzt' : 'ab ' + esc(planKurz(st.from))) + '</div>' +
+        '<div class="pz-bar">' +
+          '<div class="pz-fill" style="width:' + breite.toFixed(1) + '%"></div>' +
+          '<div class="pz-dose">' + esc(num(st.dose)) + '</div>' +
+        '</div>' +
+        '<div class="pz-bis">' + (st.last ? 'Ziel' : 'bis ' + esc(planKurz(st.until))) + '</div>' +
+        '</div>';
+    }).join('');
+
+    var rest = sched.length - (von + zeigen.length);
+    var mehr = rest > 0
+      ? '<div class="plan-more">… ' + rest +
+        (rest === 1 ? ' weitere Stufe' : ' weitere Stufen') + ' bis zum Ziel</div>'
+      : '';
+
+    return '<div class="plan-head">' + kopf + '</div>' +
+      '<div class="plan-zeilen">' + rows + '</div>' + mehr +
+      '<div class="plan-foot">' +
+        'Ziel ' + esc(num(p.targetDose)) + ' ' + esc(u) + ' am ' + esc(planDatum(end)) +
+        ' · ' + pace.steps + (pace.steps === 1 ? ' Schritt' : ' Schritte') +
+        ' über ' + pace.days + ' Tage' +
+        (pos.started && !pos.done ? ' · noch ' + pos.daysLeft + ' Tage' : '') +
+        '<br>Ø −' + esc(num(pace.perWeek)) + ' ' + esc(u) + ' pro Woche' +
+        ' (−' + esc(num(pace.perDay)) + ' pro Tag)' +
+      '</div>';
+  }
+
   // ---------- Auswertung ----------
   function render() {
     var all = loadEntries();
@@ -714,6 +795,10 @@
       '</div>' +
       (weeklyOn ? '<div class="stats-note">Ab 35 Tagen zeigt das Diagramm Wochen statt Tage – je Punkt der Durchschnitt pro Tag dieser Woche, damit die Zahlen lesbar bleiben.</div>' : '') +
       '<div class="stats-cards">' + cards + '</div>' +
+      /* Derselbe Block wie im Plan-Fenster, aus derselben Funktion. */
+      (PL && PL.isActive()
+        ? section('Abdosierungsplan', '') + '<div class="plan-block">' + planBlock() + '</div>'
+        : '') +
       (useEq ? (function () {
         var miss = unconverted(inRange);
         var warn = '';
@@ -973,7 +1058,7 @@
   }
 
   window.TagebuchStats = {
-    open: open, close: close, listMetrics: listMetrics,
+    open: open, close: close, listMetrics: listMetrics, planBlock: planBlock,
     getDayStart: getDayStart, setDayStart: setDayStart, logicalDate: logicalDate
   };
 })();
