@@ -83,7 +83,7 @@ function loadStats(nowMs, storage) {
   const fn = new Function('localStorage', 'Date', 'window', 'document',
     body + '\n; return { buildSeries: buildSeries, movingAverage: movingAverage,' +
     ' weekly: weekly, logicalDate: logicalDate, dayKey: dayKey, eqValue: eqValue,' +
-    ' eqFactor: eqFactor, niceCeil: niceCeil, niceAxis: niceAxis, unitInfo: unitInfo, loadEntries: loadEntries };');
+    ' eqFactor: eqFactor, niceCeil: niceCeil, niceAxis: niceAxis, verlaufChart: verlaufChart, unitInfo: unitInfo, loadEntries: loadEntries };');
   return fn(
     storage || store(),
     mockDate(nowMs),
@@ -404,6 +404,40 @@ group('Warum ein Plan nicht gilt (problem)');
     if ((P.problem(p2) === null) !== P.valid(p2)) uneins++;
   });
   eq('problem() und valid() nie uneins', uneins, 0);
+}
+
+// =========================================================================
+group('Soll-Linie im Diagramm');
+{
+  const S = loadStats(at(2026, 9, 14));
+  const werte = [40, 140, 160, 140, 130, 130, 120, 100, 100, 80, 80, 80, 80, 80, 40];
+  const dates = werte.map((_, i) => new Date(2026, 7, 31 + i));
+  const serie = { values: werte, dates: dates, labels: dates.map(() => '01.01'),
+                  total: 0, prevTotal: 0 };
+  const linien = svg => (svg.match(/<polyline/g) || []).length;
+
+  /* Der Fall, der in der App auftrat: der Plan startet heute. Im
+     Rueckblick hat dann nur der letzte Tag einen Sollwert - eine Strecke
+     aus einem Punkt. Die wurde verworfen, und das Diagramm blieb ohne
+     Soll-Linie, obwohl die Legende eine ankuendigte. */
+  const einTag = werte.map((_, i) => (i === werte.length - 1 ? 60 : null));
+  const svg1 = S.verlaufChart(serie, 'mg DÄ', einTag);
+  ok('ein einzelner Soll-Tag wird gezeichnet', linien(svg1) > 0);
+  ok('und beschriftet', svg1.indexOf('Soll') >= 0);
+
+  // mehrere Tage: unveraendert eine Linie
+  const viele = werte.map((_, i) => (i >= 10 ? 60 : null));
+  ok('mehrere Soll-Tage ergeben eine Linie', linien(S.verlaufChart(serie, 'mg DÄ', viele)) > 0);
+
+  // ohne Plan keine Linie und kein Label
+  const ohne = S.verlaufChart(serie, 'mg DÄ', null);
+  eq('ohne Plan keine Soll-Linie', linien(ohne), 0);
+  eq('ohne Plan kein Soll-Label', ohne.indexOf('Soll'), -1);
+
+  /* Luecke mitten im Fenster: vor dem Planstart gibt es kein Soll, danach
+     schon - die Linie darf die Luecke nicht ueberbruecken. */
+  const mitLuecke = werte.map((_, i) => (i < 3 ? 60 : (i > 8 ? 40 : null)));
+  eq('Luecke bleibt eine Luecke', linien(S.verlaufChart(serie, 'mg DÄ', mitLuecke)), 4);
 }
 
 // ---------- Ergebnis ----------

@@ -443,11 +443,24 @@
     if (known.length) {
       var run = [], segs = [];
       tg.forEach(function (t, i) {
-        if (t === null || t === undefined) { if (run.length > 1) segs.push(run); run = []; return; }
+        if (t === null || t === undefined) { if (run.length) segs.push(run); run = []; return; }
         run.push({ x: padL + slot * i + slot / 2, y: yOf(t), t: t });
       });
-      if (run.length > 1) segs.push(run);
+      if (run.length) segs.push(run);
       plan = segs.map(function (pts) {
+        /* Ein einzelner Tag mit Sollwert ist keine Strecke - und genau das
+           kommt vor: startet der Plan heute, hat im Rueckblick nur der
+           letzte Tag ueberhaupt ein Soll. Vorher wurden solche Laeufe
+           verworfen, das Diagramm blieb ohne Soll-Linie, obwohl die
+           Legende eine versprach. Jetzt wird der Wert als kurzer Strich
+           ueber diesem Tag gezeichnet. */
+        if (pts.length === 1) {
+          var halb = Math.max(4, Math.min(slot / 2 - 1, 16));
+          pts = [
+            { x: Math.max(padL, pts[0].x - halb), y: pts[0].y, t: pts[0].t },
+            { x: Math.min(W - padR, pts[0].x + halb), y: pts[0].y, t: pts[0].t }
+          ];
+        }
         var s = pts.map(function (p) { return p.x.toFixed(1) + ',' + p.y.toFixed(1); }).join(' ');
         return '<polyline points="' + s + '" fill="none" stroke="var(--bg)" stroke-width="3.4"' +
           ' opacity=".45" stroke-linecap="round"></polyline>' +
