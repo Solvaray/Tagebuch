@@ -284,28 +284,26 @@
     return n * base;
   }
 
-  /* Balken nur oben abgerundet. Ein rect mit rx rundet auch die Fusspunkte -
-     die Balken sehen dann aus, als schwebten sie ueber der Nulllinie. */
-  function barPath(x, y, w, h, r) {
-    r = Math.min(r, w / 2, h);
-    return 'M' + x.toFixed(1) + ',' + (y + h).toFixed(1) +
-      'V' + (y + r).toFixed(1) +
-      'Q' + x.toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + r).toFixed(1) + ',' + y.toFixed(1) +
-      'H' + (x + w - r).toFixed(1) +
-      'Q' + (x + w).toFixed(1) + ',' + y.toFixed(1) + ' ' + (x + w).toFixed(1) + ',' + (y + r).toFixed(1) +
-      'V' + (y + h).toFixed(1) + 'Z';
-  }
+  /* Weiche Kurve, die nichts erfindet.
 
-  /* Weiche Kurve statt Zickzack (Catmull-Rom als Bezier). Der Schnitt ist
-     eine Tendenz - eckige Knicke behaupten Ereignisse, die es nicht gibt. */
+     Catmull-Rom allein schiesst zwischen zwei Punkten ueber den
+     Nachbarwert hinaus. Bei einem Verlauf von Dosiswerten stuende dort
+     dann eine Menge, die an keinem Tag genommen wurde - nach 20 und 120
+     eine Spitze auf 135. Die Kontrollpunkte werden darum auf den Bereich
+     der beiden Tage begrenzt, die das Stueck verbindet: die Kurve bleibt
+     weich, verlaesst aber niemals das Fenster zwischen zwei echten
+     Werten. */
   function smoothPath(pts) {
     if (pts.length < 2) return '';
     if (pts.length === 2) return 'M' + pts[0].x + ',' + pts[0].y + 'L' + pts[1].x + ',' + pts[1].y;
     var d = 'M' + pts[0].x.toFixed(1) + ',' + pts[0].y.toFixed(1);
     for (var i = 0; i < pts.length - 1; i++) {
       var p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-      d += 'C' + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + ',' + (p1.y + (p2.y - p0.y) / 6).toFixed(1) +
-           ' ' + (p2.x - (p3.x - p1.x) / 6).toFixed(1) + ',' + (p2.y - (p3.y - p1.y) / 6).toFixed(1) +
+      var lo = Math.min(p1.y, p2.y), hi = Math.max(p1.y, p2.y);
+      var c1 = Math.min(hi, Math.max(lo, p1.y + (p2.y - p0.y) / 6));
+      var c2 = Math.min(hi, Math.max(lo, p2.y - (p3.y - p1.y) / 6));
+      d += 'C' + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + ',' + c1.toFixed(1) +
+           ' ' + (p2.x - (p3.x - p1.x) / 6).toFixed(1) + ',' + c2.toFixed(1) +
            ' ' + p2.x.toFixed(1) + ',' + p2.y.toFixed(1);
     }
     return d;
@@ -366,7 +364,7 @@
     return stufe * base * 4;
   }
 
-  function barChart(series, avg, unitLabel, showAvg, targets) {
+  function verlaufChart(series, unitLabel, targets) {
     /* Absichtlich schmale viewBox: das SVG wird auf Handybreite skaliert.
        Bei 560 Einheiten schrumpft Schriftgroesse 10 auf gut 6 Pixel - lesbar
        ist das nicht. Bei 360 bleibt eine Einheit ungefaehr ein Pixel. */
@@ -390,7 +388,6 @@
     var padL = Math.max(20, textW(num(max), AFS) + 5);
     var innerW = W - padL - padR, innerH = H - padT - padB;
     var slot = innerW / n;
-    var bw = Math.max(1.5, Math.min(slot - (slot > 7 ? 2.5 : 0.8), 30));
     var baseY = padT + innerH;
     var yOf = function (v) { return baseY - (v / max) * innerH; };
 
@@ -418,37 +415,33 @@
         '" fill="var(--text-dim)" opacity=".8" font-family="' + MONO + '">' + esc(num(max * f)) + '</text>';
     });
 
-    // ---------- Balken ----------
-    var bars = '';
-    series.values.forEach(function (v, i) {
-      if (!(v > 0)) return;
-      var h = (v / max) * innerH;
-      var x = padL + slot * i + (slot - bw) / 2;
-      var y = baseY - h;
-      bars += '<path d="' + barPath(x, y, bw, Math.max(h, 1.5), Math.min(3, bw / 2)) +
-        '" fill="url(#' + (i === n - 1 ? 'barGradToday' : 'barGrad') + ')"></path>';
+    /* ---------- Verlauf: Flaeche, Linie, Punkt je Tag ----------
+       Die Punkte sind wichtig: ohne sie waere nicht mehr zu sehen, wo ein
+       Tag aufhoert und der naechste anfaengt - man laese Werte zwischen
+       zwei Tagen ab, die es nicht gibt. Tage ohne Eintrag fallen auf null
+       und ziehen die Flaeche mit runter; das ist gewollt. */
+    var punkte = series.values.map(function (v, i) {
+      return { x: padL + slot * i + slot / 2, y: yOf(v) };
     });
+    var kurve = smoothPath(punkte);
+    var flaeche = '<path d="' + kurve +
+      'L' + punkte[n - 1].x.toFixed(1) + ',' + baseY +
+      'L' + punkte[0].x.toFixed(1) + ',' + baseY + 'Z" fill="url(#istGrad)"></path>';
+    var linie = '<path d="' + kurve + '" fill="none" stroke="#8fab98" stroke-width="2"' +
+      ' stroke-linejoin="round" stroke-linecap="round"></path>';
+    var punkteSvg = punkte.map(function (pt, i) {
+      var heute = (i === n - 1);
+      return '<circle cx="' + pt.x.toFixed(1) + '" cy="' + pt.y.toFixed(1) +
+        '" r="' + (heute ? 3.2 : Math.max(1.6, Math.min(2.6, slot / 6))).toFixed(1) +
+        '" fill="' + (heute ? '#c6ddcc' : '#8fab98') + '"' +
+        (heute ? '' : ' opacity=".9"') + '></circle>';
+    }).join('');
+    var bars = flaeche + linie + punkteSvg;
 
-    /* ---------- Schnitt ----------
-       Nur die Linie, keine Flaeche mehr: die Flaeche lief zwischen den
-       Balken hindurch und liess Tage ohne Eintrag wie schwarze Balken
-       aussehen. */
+    /* Der 7-Tage-Schnitt ist weg. Der Verlauf ist jetzt selbst eine Kurve -
+       eine zweite daneben waere genau das Liniengewirr, das die Ansicht
+       unleserlich gemacht hat. Die eine Linie, die bleibt, ist der Plan. */
     var trendLine = '', avgPts = null;
-    if (showAvg && avg && avg.length === n) {
-      avgPts = avg.map(function (v, i) {
-        return { x: padL + slot * i + slot / 2, y: Math.max(padT, Math.min(baseY, yOf(v))) };
-      });
-      var d = smoothPath(avgPts);
-      /* Zurueckgenommen: die Linien sind Orientierung, die Zahlen sind der
-         Inhalt. Voll deckend konkurrieren sie mit den Werten an den
-         Balken. */
-      trendLine = '<path d="' + d + '" fill="none" stroke="var(--bg)" stroke-width="3" opacity=".45"' +
-        ' stroke-linejoin="round" stroke-linecap="round"></path>' +
-        '<path d="' + d + '" fill="none" stroke="#d9b26a" stroke-width="1.6" opacity=".62"' +
-        ' stroke-linejoin="round" stroke-linecap="round"></path>' +
-        '<circle cx="' + avgPts[n - 1].x.toFixed(1) + '" cy="' + avgPts[n - 1].y.toFixed(1) +
-        '" r="2.3" fill="#d9b26a" opacity=".75"></circle>';
-    }
 
     /* ---------- Soll-Linie aus dem eigenen Plan ----------
        Gestrichelt und in anderer Farbe als der Schnitt, damit niemand die
@@ -523,10 +516,10 @@
       var w = textW(label, FS);
       var x0 = cx - w / 2, x1 = cx + w / 2;
       var y = yOf(v);
-      /* Balken fast bis oben: die Zahl wuerde aus dem Bild ragen, also
-         steht sie dann im Balken. */
-      var innen = (y - 5) < padT + 1;
-      var ty = innen ? y + 10 : y - 5;
+      /* Punkt fast am oberen Rand: die Zahl wuerde aus dem Bild ragen,
+         also steht sie dann darunter. */
+      var innen = (y - 8) < padT + 1;
+      var ty = innen ? y + 13 : y - 8;
       if (!innen) {
         var linien = [];
         if (avgPts) linien.push(avgPts[i].y);
@@ -540,9 +533,8 @@
       taken.push([x0, x1, ty]);
       values += '<text x="' + cx.toFixed(1) + '" y="' + ty.toFixed(1) +
         '" text-anchor="middle" font-size="' + FS + '" font-family="' + MONO + '"' +
-        ' fill="' + (innen ? '#14161a' : 'var(--text)') + '"' +
-        (innen ? '' : ' stroke="var(--bg)" stroke-width="2.4" stroke-linejoin="round" paint-order="stroke"') +
-        '>' + esc(label) + '</text>';
+        ' fill="var(--text)" stroke="var(--bg)" stroke-width="2.4" stroke-linejoin="round"' +
+        ' paint-order="stroke">' + esc(label) + '</text>';
     });
 
     // ---------- Datumsachse ----------
@@ -558,13 +550,9 @@
 
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" class="chart" role="img" aria-label="Tagesverlauf">' +
       '<defs>' +
-        '<linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0%" stop-color="#8fab98" stop-opacity="1"></stop>' +
-          '<stop offset="100%" stop-color="#7c9885" stop-opacity=".34"></stop>' +
-        '</linearGradient>' +
-        '<linearGradient id="barGradToday" x1="0" y1="0" x2="0" y2="1">' +
-          '<stop offset="0%" stop-color="#c6ddcc" stop-opacity="1"></stop>' +
-          '<stop offset="100%" stop-color="#8fab98" stop-opacity=".42"></stop>' +
+        '<linearGradient id="istGrad" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#8fab98" stop-opacity=".38"></stop>' +
+          '<stop offset="100%" stop-color="#8fab98" stop-opacity="0"></stop>' +
         '</linearGradient>' +
       '</defs>' +
       grid + bars + trendLine + plan + values + ticks +
@@ -636,9 +624,6 @@
     var trackedDays = series.values.length || 1;
     var truncated = trackedDays < state.range;
 
-    // erst jetzt, sonst mittelt der Schnitt ueber Tage vor dem ersten Eintrag
-    var avg = movingAverage(series.values, 7);
-
     // Kennzahlen
     var activeDays = series.values.filter(function (v) { return v > 0; }).length;
     var freeDays = trackedDays - activeDays;
@@ -700,25 +685,18 @@
       hours[Math.floor(d.getHours() / 2)] += valueOf(e);
     });
 
-    /* Ein 7-Tage-Schnitt braucht mehr als sieben Tage. Bei genau sieben
-       ist die "Kurve" nichts als der Gesamtschnitt, liegt flach ueber den
-       Balken und konkurriert dort mit der Soll-Linie des Plans - genau der
-       undeutliche Bogen, der die 7-Tage-Ansicht unlesbar gemacht hat. */
-    var showAvg = series.values.length > 7;
-
 
     /* Ueber fuenf Wochen wird aus jedem Tagesbalken ein Strich, an den keine
        Zahl mehr passt - 90 Balken auf Handybreite sind Matsch. Dann buendelt
        das Diagramm Wochen und zeigt den Durchschnitt pro Tag. Der bleibt mit
        der Soll-Linie vergleichbar, weil auch die eine Tagesdosis ist. */
-    var cSeries = series, cTargets = targets, cAvg = avg, cShowAvg = showAvg;
+    var cSeries = series, cTargets = targets;
     var cTitle = 'Tagesverlauf', weeklyOn = false;
     // In der Legende steht die Kurzform, sonst bricht sie auf dem Handy um
     var cMetric = useEq ? 'Tageswert' : metricWord;
     if (series.values.length > 35) {
       var wk = weekly(series, targets);
       cSeries = wk.series; cTargets = wk.targets;
-      cAvg = null; cShowAvg = false;
       cTitle = 'Wochenverlauf'; cMetric = 'Ø pro Tag'; weeklyOn = true;
     }
 
@@ -731,11 +709,10 @@
     body.innerHTML =
       '<div class="chart-card">' +
         section(cTitle, '<span class="legend"><i class="l-bar"></i>' + cMetric +
-          (cShowAvg ? ' <i class="l-line"></i>7-Tage-Schnitt' : '') +
           (planOn ? ' <i class="l-plan"></i>Plan' : '') + '</span>') +
-        barChart(cSeries, cAvg, unitLabel, cShowAvg, cTargets) +
+        verlaufChart(cSeries, unitLabel, cTargets) +
       '</div>' +
-      (weeklyOn ? '<div class="stats-note">Ab 35 Tagen zeigt das Diagramm Wochen statt Tage – je Balken der Durchschnitt pro Tag dieser Woche, damit die Zahlen lesbar bleiben.</div>' : '') +
+      (weeklyOn ? '<div class="stats-note">Ab 35 Tagen zeigt das Diagramm Wochen statt Tage – je Punkt der Durchschnitt pro Tag dieser Woche, damit die Zahlen lesbar bleiben.</div>' : '') +
       '<div class="stats-cards">' + cards + '</div>' +
       (useEq ? (function () {
         var miss = unconverted(inRange);
